@@ -4,7 +4,8 @@ import SwiftUI
 
 struct IntroTab: View {
     @Binding var hasSeenIntro: Bool
-    @Binding var selectedTab: Int
+    @Binding var selectedTab: Int // Kept for compatibility but no longer drives navigation
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var localization = LocalizationManager.shared
 
     var body: some View {
@@ -155,9 +156,7 @@ struct IntroTab: View {
                 // Pulsante
                 Button {
                     hasSeenIntro = true
-                    withAnimation {
-                        selectedTab = 1
-                    }
+                    dismiss()
                 } label: {
                     HStack {
                         Text(localization.currentLanguage == .italian ?

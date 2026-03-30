@@ -25,8 +25,7 @@ struct smolApp: App {
         Window("smol", id: "dashboard") {
             DashboardView(monitor: systemMonitor)
         }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 700, height: 500)
+        .defaultSize(width: 800, height: 550)
 
         // Cleanup Window
         Window("smol cleanup", id: "cleanup") {
