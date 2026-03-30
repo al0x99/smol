@@ -120,6 +120,7 @@ struct AIChatSection: View {
     @ObservedObject var advisor: SmartAdvisor
     @Binding var inputText: String
     @FocusState var isInputFocused: Bool
+    @State private var isGenerating = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -137,6 +138,20 @@ struct AIChatSection: View {
                             ChatBubble(message: message, resourceCost: message.resourceCost)
                                 .id(message.id)
                         }
+
+                        // Typing indicator
+                        if isGenerating {
+                            HStack {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                Text("Thinking...")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal)
+                            .id("typing")
+                        }
                     }
                     .padding()
                 }
@@ -144,6 +159,13 @@ struct AIChatSection: View {
                     if let lastMessage = advisor.conversation.messages.last {
                         withAnimation {
                             proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
+                    }
+                }
+                .onChange(of: isGenerating) { _, newValue in
+                    if newValue {
+                        withAnimation {
+                            proxy.scrollTo("typing", anchor: .bottom)
                         }
                     }
                 }
@@ -166,8 +188,12 @@ struct AIChatSection: View {
 
         let query = inputText
         inputText = ""
+        isGenerating = true
 
-        _ = advisor.processQuery(query)
+        Task {
+            _ = await advisor.processQuery(query)
+            isGenerating = false
+        }
     }
 }
 
@@ -256,6 +282,15 @@ struct ChatBubble: View {
                     Text(message.role == .user ? "You" : "Assistant")
                         .font(.caption)
                         .foregroundColor(.secondary)
+
+                    if message.role == .assistant, let backend = message.backendSource {
+                        Text(backend)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.purple.opacity(0.15))
+                            .cornerRadius(4)
+                    }
 
                     Text(message.timestamp, style: .time)
                         .font(.caption2)

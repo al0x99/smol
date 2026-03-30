@@ -23,7 +23,7 @@ struct TemperatureSensor: Identifiable {
         var icon: String {
             switch self {
             case .cpuEfficiency, .cpuPerformance: return "cpu"
-            case .gpu: return "gpu"
+            case .gpu: return "square.3.layers.3d"
             case .memory: return "memorychip"
             case .battery: return "battery.100"
             case .storage: return "internaldrive"

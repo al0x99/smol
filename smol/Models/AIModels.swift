@@ -140,18 +140,20 @@ struct AIConversation: Identifiable {
         let role: Role
         let content: String
         let timestamp: Date
-        var resourceCost: ResourceTracker.ResourceCost?  // Resource cost for AI responses
+        var resourceCost: ResourceTracker.ResourceCost?
+        var backendSource: String?  // "Cloud", "MLX", "Apple AI", "Template"
 
         enum Role {
             case user
             case assistant
         }
 
-        init(role: Role, content: String, timestamp: Date = Date(), resourceCost: ResourceTracker.ResourceCost? = nil) {
+        init(role: Role, content: String, timestamp: Date = Date(), resourceCost: ResourceTracker.ResourceCost? = nil, backendSource: String? = nil) {
             self.role = role
             self.content = content
             self.timestamp = timestamp
             self.resourceCost = resourceCost
+            self.backendSource = backendSource
         }
     }
 }

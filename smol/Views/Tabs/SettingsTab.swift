@@ -110,6 +110,9 @@ struct SettingsTab: View {
                     Label("settings.notifications".localized(localization), systemImage: "bell.badge")
                 }
 
+                // AI Backend
+                AIBackendSettingsView()
+
                 // smol Resource Usage
                 SmolSelfMonitorView()
 
@@ -373,6 +376,204 @@ struct SmolSelfMonitorView: View {
             DispatchQueue.main.async {
                 self.memoryUsage = taskInfo.phys_footprint
             }
+        }
+    }
+}
+
+// MARK: - AI Backend Settings
+
+struct AIBackendSettingsView: View {
+    @State private var apiKey: String = ""
+    @State private var selectedProvider: AIProvider = .openRouter
+    @State private var customBaseURL: String = ""
+    @State private var modelID: String = ""
+    @State private var connectionStatus: String = ""
+    @State private var isTesting = false
+    @State private var isConnected = false
+    @State private var showKey = false
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 16) {
+                // Provider selector
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Provider", systemImage: "cloud")
+                        .font(.headline)
+
+                    Picker("Provider", selection: $selectedProvider) {
+                        ForEach(AIProvider.allCases) { provider in
+                            Label(provider.rawValue, systemImage: provider.icon)
+                                .tag(provider)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: selectedProvider) { _, provider in
+                        if provider != .custom {
+                            customBaseURL = provider.baseURL
+                            modelID = provider.defaultModel
+                        }
+                    }
+                }
+
+                Divider()
+
+                // API Key
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("API Key")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+
+                    HStack {
+                        if showKey {
+                            TextField("sk-or-v1-...", text: $apiKey)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.body, design: .monospaced))
+                        } else {
+                            SecureField("sk-or-v1-...", text: $apiKey)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        Button {
+                            showKey.toggle()
+                        } label: {
+                            Image(systemName: showKey ? "eye.slash" : "eye")
+                        }
+                        .buttonStyle(.borderless)
+
+                        Button("Save") {
+                            saveConfig()
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(apiKey.isEmpty)
+                    }
+                }
+
+                // Model ID
+                HStack {
+                    Text("Model:")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+
+                    TextField("google/gemini-2.5-flash", text: $modelID)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.caption, design: .monospaced))
+                }
+
+                // Custom URL (only for custom provider)
+                if selectedProvider == .custom {
+                    HStack {
+                        Text("Base URL:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        TextField("https://api.example.com/v1", text: $customBaseURL)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.caption, design: .monospaced))
+                    }
+                }
+
+                Divider()
+
+                // Test + Status
+                HStack {
+                    Button {
+                        testConnection()
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isTesting {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                            }
+                            Text("Test Connection")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(apiKey.isEmpty || isTesting)
+
+                    if !connectionStatus.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: isConnected ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundColor(isConnected ? .green : .red)
+                            Text(connectionStatus)
+                                .font(.caption)
+                                .foregroundColor(isConnected ? .green : .red)
+                        }
+                    }
+
+                    Spacer()
+
+                    if KeychainHelper.hasAPIKey {
+                        Button("Clear Key") {
+                            KeychainHelper.delete(account: KeychainHelper.apiKeyAccount)
+                            apiKey = ""
+                            connectionStatus = ""
+                            isConnected = false
+                        }
+                        .foregroundColor(.red)
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+            .padding()
+        } label: {
+            HStack {
+                Label("AI Backend", systemImage: "brain")
+                    .font(.headline)
+                Spacer()
+                if KeychainHelper.hasAPIKey {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                        Text("Active")
+                            .font(.caption2)
+                            .foregroundColor(.green)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            loadConfig()
+        }
+    }
+
+    private func loadConfig() {
+        apiKey = KeychainHelper.apiKey ?? ""
+        modelID = KeychainHelper.modelID
+
+        let savedURL = KeychainHelper.providerBaseURL
+        if let provider = AIProvider.allCases.first(where: { $0.baseURL == savedURL }) {
+            selectedProvider = provider
+        } else {
+            selectedProvider = .custom
+            customBaseURL = savedURL
+        }
+    }
+
+    private func saveConfig() {
+        KeychainHelper.save(account: KeychainHelper.apiKeyAccount, value: apiKey)
+        KeychainHelper.save(account: KeychainHelper.modelIDAccount, value: modelID)
+
+        let url = selectedProvider == .custom ? customBaseURL : selectedProvider.baseURL
+        KeychainHelper.save(account: KeychainHelper.providerURLAccount, value: url)
+
+        // Reload the engine config
+        Task {
+            try? await LLMInferenceManager.shared.initializeCloudBackend()
+        }
+    }
+
+    private func testConnection() {
+        isTesting = true
+        connectionStatus = ""
+
+        let url = selectedProvider == .custom ? customBaseURL : selectedProvider.baseURL
+
+        Task {
+            let result = await OpenRouterEngine.validateAPIKey(apiKey, baseURL: url)
+            isTesting = false
+            isConnected = result.valid
+            connectionStatus = result.message
         }
     }
 }

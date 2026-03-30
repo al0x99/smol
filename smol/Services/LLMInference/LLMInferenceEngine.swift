@@ -84,9 +84,9 @@ struct GenerationConfig: Sendable {
         temperature: 0.5,
         topP: 0.85,
         systemPrompt: """
-        Sei un assistente AI integrato in smol, un'app di monitoraggio sistema per macOS.
-        Rispondi in modo conciso e utile. Usa italiano se l'utente scrive in italiano.
-        Puoi analizzare metriche di CPU, memoria, temperatura e processi.
+        You are smol, an AI assistant built into a macOS system monitoring app.
+        Respond concisely and helpfully. Match the user's language.
+        You can analyze CPU, memory, temperature, and process metrics.
         """
     )
 }
@@ -122,23 +122,29 @@ enum LLMError: LocalizedError {
     case insufficientMemory
     case invalidModelFormat
     case cancelled
+    case networkUnavailable
+    case apiKeyMissing
 
     var errorDescription: String? {
         switch self {
         case .modelNotLoaded:
-            return "Nessun modello caricato"
+            return "No model loaded"
         case .modelLoadFailed(let reason):
-            return "Caricamento modello fallito: \(reason)"
+            return "Model load failed: \(reason)"
         case .generationFailed(let reason):
-            return "Generazione fallita: \(reason)"
+            return "Generation failed: \(reason)"
         case .backendNotAvailable(let backend):
-            return "Backend \(backend) non disponibile"
+            return "Backend \(backend) not available"
         case .insufficientMemory:
-            return "Memoria insufficiente per caricare il modello"
+            return "Insufficient memory to load model"
         case .invalidModelFormat:
-            return "Formato modello non valido"
+            return "Invalid model format"
         case .cancelled:
-            return "Operazione annullata"
+            return "Operation cancelled"
+        case .networkUnavailable:
+            return "No network connection"
+        case .apiKeyMissing:
+            return "API key not configured"
         }
     }
 }
@@ -146,7 +152,7 @@ enum LLMError: LocalizedError {
 // MARK: - Backend Type
 
 enum LLMBackend: String, CaseIterable, Identifiable {
-    case llamaCpp = "llama.cpp"
+    case openRouter = "Cloud"
     case mlx = "MLX"
     case auto = "Auto"
 
@@ -154,18 +160,18 @@ enum LLMBackend: String, CaseIterable, Identifiable {
 
     var description: String {
         switch self {
-        case .llamaCpp:
-            return "llama.cpp - Supporta GGUF, compatibile con tutti i Mac"
+        case .openRouter:
+            return "Cloud — OpenRouter, Together AI, Groq, OpenAI"
         case .mlx:
-            return "MLX - Ottimizzato Apple Silicon, massime performance"
+            return "MLX — On-device Apple Silicon inference"
         case .auto:
-            return "Seleziona automaticamente il backend migliore"
+            return "Auto-select the best available backend"
         }
     }
 
     var icon: String {
         switch self {
-        case .llamaCpp: return "terminal"
+        case .openRouter: return "cloud"
         case .mlx: return "apple.logo"
         case .auto: return "wand.and.stars"
         }
@@ -173,9 +179,9 @@ enum LLMBackend: String, CaseIterable, Identifiable {
 
     var supportedFormats: [String] {
         switch self {
-        case .llamaCpp: return ["gguf", "ggml"]
+        case .openRouter: return []
         case .mlx: return ["safetensors", "mlx"]
-        case .auto: return ["gguf", "ggml", "safetensors", "mlx"]
+        case .auto: return ["safetensors", "mlx"]
         }
     }
 }
@@ -198,28 +204,35 @@ class LLMInferenceManager: ObservableObject {
 
     // MARK: - Engines
 
-    private var llamaCppEngine: LlamaCppEngine?
+    private var openRouterEngine: OpenRouterEngine?
     private var mlxEngine: MLXEngine?
 
-    private var activeEngine: LLMInferenceEngine? {
+    var activeEngine: LLMInferenceEngine? {
+        resolveActiveEngine()
+    }
+
+    private func resolveActiveEngine() -> LLMInferenceEngine? {
         switch selectedBackend {
-        case .llamaCpp:
-            return llamaCppEngine
+        case .openRouter:
+            return openRouterEngine
         case .mlx:
             return mlxEngine
         case .auto:
-            // Prefers MLX on Apple Silicon, otherwise llama.cpp
+            // Priority: MLX (if loaded) → OpenRouter (if key set) → nil
             if isAppleSilicon && mlxEngine?.isModelLoaded == true {
                 return mlxEngine
             }
-            return llamaCppEngine
+            if openRouterEngine?.isModelLoaded == true {
+                return openRouterEngine
+            }
+            return nil
         }
     }
 
     // MARK: - Initialization
 
     private init() {
-        llamaCppEngine = LlamaCppEngine()
+        openRouterEngine = OpenRouterEngine()
         mlxEngine = MLXEngine()
     }
 
@@ -230,7 +243,7 @@ class LLMInferenceManager: ObservableObject {
         let actualConfig = config ?? LLMConfig()
 
         guard let modelPath = ModelManager.shared.modelPath(for: model) else {
-            throw LLMError.modelLoadFailed("Modello non scaricato")
+            throw LLMError.modelLoadFailed("Model not downloaded")
         }
 
         isLoading = true
@@ -238,12 +251,9 @@ class LLMInferenceManager: ObservableObject {
 
         do {
             let engine = selectEngine(for: modelPath)
-
             try await engine.loadModel(at: modelPath, config: actualConfig)
-
             loadedModel = model
             isLoading = false
-
         } catch {
             isLoading = false
             lastError = error.localizedDescription
@@ -251,9 +261,20 @@ class LLMInferenceManager: ObservableObject {
         }
     }
 
+    /// Initialize the cloud backend (no model download needed)
+    func initializeCloudBackend() async throws {
+        guard let engine = openRouterEngine else {
+            throw LLMError.backendNotAvailable("Cloud engine not initialized")
+        }
+        engine.reloadConfig()
+        guard engine.isModelLoaded else {
+            throw LLMError.apiKeyMissing
+        }
+    }
+
     /// Unload the current model
     func unloadModel() {
-        llamaCppEngine?.unloadModel()
+        openRouterEngine?.unloadModel()
         mlxEngine?.unloadModel()
         loadedModel = nil
     }
@@ -281,7 +302,7 @@ class LLMInferenceManager: ObservableObject {
         }
 
         isGenerating = true
-        generationProgress = "Generando..."
+        generationProgress = "Generating..."
 
         let response = try await engine.generateComplete(prompt: prompt, config: actualConfig)
 
@@ -294,13 +315,37 @@ class LLMInferenceManager: ObservableObject {
     /// Check backend availability
     func isBackendAvailable(_ backend: LLMBackend) -> Bool {
         switch backend {
-        case .llamaCpp:
-            return LlamaCppEngine.isAvailable
+        case .openRouter:
+            return OpenRouterEngine.isAvailable
         case .mlx:
             return MLXEngine.isAvailable && isAppleSilicon
         case .auto:
             return true
         }
+    }
+
+    /// Try to generate with automatic fallback across backends
+    func generateWithFallback(prompt: String, config: GenerationConfig? = nil) async throws -> (response: LLMResponse, backend: String) {
+        let actualConfig = config ?? GenerationConfig.systemAnalysis
+
+        // Try active engine first
+        if let engine = resolveActiveEngine(), engine.isModelLoaded {
+            let response = try await engine.generateComplete(prompt: prompt, config: actualConfig)
+            isGenerating = false
+            return (response, engine.backendName)
+        }
+
+        // Try OpenRouter if key is set
+        if let engine = openRouterEngine {
+            engine.reloadConfig()
+            if engine.isModelLoaded {
+                let response = try await engine.generateComplete(prompt: prompt, config: actualConfig)
+                isGenerating = false
+                return (response, engine.backendName)
+            }
+        }
+
+        throw LLMError.modelNotLoaded
     }
 
     // MARK: - Private
@@ -309,18 +354,15 @@ class LLMInferenceManager: ObservableObject {
         let ext = modelPath.pathExtension.lowercased()
 
         switch selectedBackend {
-        case .llamaCpp:
-            return llamaCppEngine!
+        case .openRouter:
+            return openRouterEngine!
         case .mlx:
             return mlxEngine!
         case .auto:
-            // Auto-select based on format and hardware
-            if ext == "gguf" || ext == "ggml" {
-                return llamaCppEngine!
-            } else if isAppleSilicon && (ext == "safetensors" || ext == "mlx") {
+            if isAppleSilicon && (ext == "safetensors" || ext == "mlx") {
                 return mlxEngine!
             }
-            return llamaCppEngine!
+            return openRouterEngine!
         }
     }
 

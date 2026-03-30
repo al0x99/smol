@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import NaturalLanguage
+import os
 
 /// SmartAdvisor - AI assistant for system analysis
 /// Uses Apple Silicon Neural Engine for on-device ML
@@ -151,8 +152,8 @@ class SmartAdvisor: ObservableObject {
         }
     }
 
-    /// Process a natural language query
-    func processQuery(_ query: String) -> String {
+    /// Process a natural language query — tries real LLM first, falls back to templates
+    func processQuery(_ query: String) async -> String {
         // Add user message
         let userMessage = AIConversation.Message(role: .user, content: query, timestamp: Date())
         conversation.messages.append(userMessage)
@@ -161,15 +162,37 @@ class SmartAdvisor: ObservableObject {
         let tracker = ResourceTracker.shared
         tracker.startTracking()
 
-        // Generate response
-        let response = nlProcessor.processQuery(
-            query,
-            cpuHistory: cpuHistory,
-            memoryHistory: memoryHistory,
-            tempHistory: tempHistory,
-            currentAdvice: currentAdvice,
-            anomalies: anomalies
-        )
+        // Build system context for the LLM
+        let systemContext = buildSystemContextPrompt()
+        var response: String
+        var backendUsed = "Template"
+
+        // Try real LLM backend first
+        do {
+            let config = GenerationConfig(
+                maxTokens: 512,
+                temperature: 0.7,
+                topP: 0.9,
+                systemPrompt: systemContext
+            )
+            let result = try await LLMInferenceManager.shared.generateWithFallback(
+                prompt: query,
+                config: config
+            )
+            response = result.response.text
+            backendUsed = result.backend
+        } catch {
+            // Fall back to template-based response
+            SmolLog.ai.info("LLM backend unavailable, using templates: \(error.localizedDescription)")
+            response = nlProcessor.processQuery(
+                query,
+                cpuHistory: cpuHistory,
+                memoryHistory: memoryHistory,
+                tempHistory: tempHistory,
+                currentAdvice: currentAdvice,
+                anomalies: anomalies
+            )
+        }
 
         // Approximate output token count
         let outputTokens = response.split(separator: " ").count
@@ -178,16 +201,43 @@ class SmartAdvisor: ObservableObject {
         // Stop tracking and get cost
         let resourceCost = tracker.stopTracking()
 
-        // Add assistant response with resource cost
-        let assistantMessage = AIConversation.Message(
+        // Add assistant response with resource cost and backend source
+        var assistantMessage = AIConversation.Message(
             role: .assistant,
             content: response,
             timestamp: Date(),
             resourceCost: resourceCost
         )
+        assistantMessage.backendSource = backendUsed
         conversation.messages.append(assistantMessage)
 
         return response
+    }
+
+    /// Build a system prompt with current system state for the LLM
+    private func buildSystemContextPrompt() -> String {
+        let cpu = cpuHistory.last?.value ?? 0
+        let mem = memoryHistory.last?.value ?? 0
+        let temp = tempHistory.last?.value ?? 0
+
+        var context = """
+        You are smol, an AI assistant built into a macOS system monitoring app.
+        Current system state:
+        - CPU: \(Int(cpu))%
+        - Memory Pressure: \(Int(mem))%
+        - Temperature: \(Int(temp))°C
+        """
+
+        if !anomalies.isEmpty {
+            context += "\n- Active anomalies: \(anomalies.map { $0.description }.joined(separator: "; "))"
+        }
+
+        if !currentAdvice.isEmpty {
+            context += "\n- Active advice: \(currentAdvice.prefix(3).map { $0.title }.joined(separator: ", "))"
+        }
+
+        context += "\n\nRespond concisely and helpfully. Match the user's language."
+        return context
     }
 
     /// Generate a comprehensive system report

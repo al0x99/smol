@@ -330,7 +330,7 @@ struct LLMModel: Identifiable, Equatable {
         case .tiny: return "leaf"
         case .small: return "hare"
         case .medium: return "tortoise"
-        case .large: return "elephant"
+        case .large: return "externaldrive.fill"
         }
     }
 
