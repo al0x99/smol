@@ -1,8 +1,8 @@
 import Foundation
 
-/// Engine di inferenza basato su llama.cpp
-/// Supporta modelli GGUF/GGML
-/// Richiede llama.cpp Swift bindings (llama.swift package)
+/// Inference engine based on llama.cpp
+/// Supports GGUF/GGML models
+/// Requires llama.cpp Swift bindings (llama.swift package)
 class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
 
     // MARK: - Properties
@@ -17,14 +17,14 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
     private var contextHandle: OpaquePointer?
     private var currentConfig: LLMConfig?
 
-    // Stato generazione (thread-safe access)
+    // Generation state (thread-safe access)
     private var isGeneratingFlag = false
     private var shouldCancel = false
     private let stateLock = NSLock()
 
     // MARK: - Static
 
-    /// Verifica se llama.cpp è disponibile
+    /// Check if llama.cpp is available
     static var isAvailable: Bool {
         #if canImport(llama)
         return true
@@ -36,7 +36,7 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
     // MARK: - Initialization
 
     init() {
-        // Inizializzazione backend llama.cpp
+        // Initialize llama.cpp backend
         initializeLlamaCpp()
     }
 
@@ -47,7 +47,7 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
     // MARK: - LLMInferenceEngine Protocol
 
     func loadModel(at path: URL, config: LLMConfig) async throws {
-        // Unload precedente se presente
+        // Unload previous if present
         if isModelLoaded {
             unloadModel()
         }
@@ -56,7 +56,7 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
             throw LLMError.modelLoadFailed("File non trovato: \(path.path)")
         }
 
-        // Verifica estensione
+        // Verify extension
         let ext = path.pathExtension.lowercased()
         guard ext == "gguf" || ext == "ggml" else {
             throw LLMError.invalidModelFormat
@@ -64,7 +64,7 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
 
         currentConfig = config
 
-        // Carica il modello in background
+        // Load the model in background
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
@@ -85,13 +85,13 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
     func unloadModel() {
         shouldCancel = true
 
-        // Libera context
+        // Free context
         if let ctx = contextHandle {
             llama_free(ctx)
             contextHandle = nil
         }
 
-        // Libera model
+        // Free model
         if let model = modelHandle {
             llama_free_model(model)
             modelHandle = nil
@@ -160,7 +160,7 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
         )
     }
 
-    /// Annulla generazione in corso
+    /// Cancel generation in progress
     func cancelGeneration() {
         shouldCancel = true
     }
@@ -168,30 +168,30 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
     // MARK: - Private Implementation
 
     private func initializeLlamaCpp() {
-        // Inizializza backend llama.cpp
+        // Initialize llama.cpp backend
         llama_backend_init()
     }
 
     private func loadModelSync(at path: URL, config: LLMConfig) throws {
-        // Parametri del modello
+        // Model parameters
         var modelParams = llama_model_default_params()
         modelParams.use_mmap = config.useMmap
         modelParams.use_mlock = config.useMlock
 
-        // GPU layers (-1 = tutti)
+        // GPU layers (-1 = all)
         if config.gpuLayers >= 0 {
             modelParams.n_gpu_layers = Int32(config.gpuLayers)
         } else {
-            modelParams.n_gpu_layers = 99  // Tutti i layers su GPU
+            modelParams.n_gpu_layers = 99  // All layers on GPU
         }
 
-        // Carica modello
+        // Load model
         guard let model = llama_load_model_from_file(path.path, modelParams) else {
             throw LLMError.modelLoadFailed("llama_load_model_from_file fallito")
         }
         modelHandle = model
 
-        // Crea context
+        // Create context
         var ctxParams = llama_context_default_params()
         ctxParams.n_ctx = UInt32(config.contextLength)
         ctxParams.n_batch = UInt32(config.batchSize)
@@ -214,7 +214,7 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
             throw LLMError.modelNotLoaded
         }
 
-        // Prepara prompt completo con system prompt
+        // Prepare full prompt with system prompt
         var fullPrompt = ""
         if let systemPrompt = config.systemPrompt {
             fullPrompt = "<|system|>\n\(systemPrompt)</s>\n<|user|>\n\(prompt)</s>\n<|assistant|>\n"
@@ -222,13 +222,13 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
             fullPrompt = prompt
         }
 
-        // Tokenizza
+        // Tokenize
         let tokens = tokenize(text: fullPrompt, model: model)
         guard !tokens.isEmpty else {
             throw LLMError.generationFailed("Tokenizzazione fallita")
         }
 
-        // Valuta prompt
+        // Evaluate prompt
         var batch = llama_batch_init(Int32(tokens.count), 0, 1)
         defer { llama_batch_free(batch) }
 
@@ -240,12 +240,12 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
             throw LLMError.generationFailed("Decode prompt fallito")
         }
 
-        // Genera tokens
+        // Generate tokens
         var generatedTokens = 0
         let vocabSize = llama_n_vocab(model)
 
         while generatedTokens < config.maxTokens && !shouldCancel {
-            // Ottieni logits
+            // Get logits
             let logits = llama_get_logits_ith(ctx, batch.n_tokens - 1)
 
             // Sampling
@@ -254,7 +254,7 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
                 candidates.append(llama_token_data(id: Int32(i), logit: logits![i], p: 0))
             }
 
-            // Usa withUnsafeMutableBufferPointer per ottenere un puntatore stabile
+            // Use withUnsafeMutableBufferPointer to get a stable pointer
             let newToken: llama_token = candidates.withUnsafeMutableBufferPointer { ptr in
                 var candidatesP = llama_token_data_array(
                     data: ptr.baseAddress,
@@ -262,7 +262,7 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
                     sorted: false
                 )
 
-                // Applica temperature e top_p
+                // Apply temperature and top_p
                 llama_sample_temp(ctx, &candidatesP, config.temperature)
                 llama_sample_top_p(ctx, &candidatesP, config.topP, 1)
                 llama_sample_top_k(ctx, &candidatesP, Int32(config.topK), 1)
@@ -275,14 +275,14 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
                 break
             }
 
-            // Decodifica e emetti token
+            // Decode and emit token
             let tokenText = decodeToken(token: newToken, model: model)
             onToken(tokenText)
 
             // Check stop sequences
-            // TODO: Implementare check stop sequences
+            // TODO: Implement stop sequence checking
 
-            // Prepara per prossimo token
+            // Prepare for next token
             llama_batch_clear(&batch)
             llama_batch_add(&batch, newToken, Int32(tokens.count + generatedTokens), [0], true)
 
@@ -293,7 +293,7 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
             generatedTokens += 1
         }
 
-        // Reset context per prossima generazione
+        // Reset context for next generation
         llama_kv_cache_clear(ctx)
     }
 
@@ -324,8 +324,8 @@ class LlamaCppEngine: LLMInferenceEngine, @unchecked Sendable {
 
 // MARK: - llama.cpp C Bindings Placeholder
 
-// Questi sono placeholder - saranno forniti dal package llama.cpp
-// Quando si aggiunge llama.swift come dependency, questi vengono rimpiazzati
+// These are placeholders - will be provided by the llama.cpp package
+// When adding llama.swift as a dependency, these get replaced
 
 #if !canImport(llama)
 
@@ -348,7 +348,7 @@ struct llama_batch {
     var n_tokens: Int32 = 0
 }
 
-// Placeholder functions - ritornano valori sicuri
+// Placeholder functions - return safe values
 func llama_backend_init() {}
 func llama_model_default_params() -> llama_model_params { llama_model_params() }
 func llama_context_default_params() -> llama_context_params { llama_context_params() }

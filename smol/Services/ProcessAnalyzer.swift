@@ -1,12 +1,12 @@
 import Foundation
 import Darwin
 
-/// Analizza i processi per trovare quelli sospetti (come Logitech che gira per 10 mesi!)
+/// Analyzes processes to find suspicious ones (like Logitech running for 10 months!)
 class ProcessAnalyzer {
     private let cpuMonitor = CPUMonitor()
     private let settings = AlertSettings.shared
 
-    // Processi di sistema da ignorare
+    // System processes to ignore
     private let systemProcesses: Set<String> = [
         "kernel_task", "launchd", "UserEventAgent", "distnoted",
         "cfprefsd", "trustd", "secd", "securityd", "syspolicyd",
@@ -18,36 +18,36 @@ class ProcessAnalyzer {
         "powerd", "bluetoothd", "apsd", "cloudd", "bird"
     ]
 
-    // Soglie per rilevamento anomalie (ora configurabili tramite AlertSettings)
+    // Thresholds for anomaly detection (now configurable via AlertSettings)
     private var cpuThresholdPercent: Double { settings.cpuThreshold }
     private var minRunningMinutes: Double { settings.minRunningMinutes }
     private var cpuTimeThresholdMinutes: Double { settings.cpuTimeThreshold }
 
-    /// Trova processi che consumano risorse in modo anomalo
+    /// Find processes consuming resources abnormally
     func findSuspiciousProcesses() -> [ProcessInfo] {
         var suspicious: [ProcessInfo] = []
         let processes = cpuMonitor.getProcessList()
         let now = Date()
 
         for proc in processes {
-            // Salta processi di sistema
+            // Skip system processes
             if systemProcesses.contains(proc.name) {
                 continue
             }
 
-            // Salta processi troppo recenti
+            // Skip processes that started too recently
             let runningMinutes = now.timeIntervalSince(proc.startTime) / 60
             if runningMinutes < minRunningMinutes {
                 continue
             }
 
-            // Calcola CPU % media basata su CPU time e tempo di esecuzione
+            // Calculate average CPU % based on CPU time and running time
             let cpuTimeMinutes = proc.cpuTimeSeconds / 60
             let cpuPercent = (cpuTimeMinutes / runningMinutes) * 100
 
-            // Processo sospetto se:
-            // 1. Ha consumato molto CPU time (tipo Logitech che girava da 10 mesi)
-            // 2. CPU % media alta per processo che gira da molto
+            // Process is suspicious if:
+            // 1. Has consumed a lot of CPU time (like Logitech running for 10 months)
+            // 2. High average CPU % for a long-running process
             let isSuspicious = cpuTimeMinutes > cpuTimeThresholdMinutes &&
                                cpuPercent > cpuThresholdPercent
 
@@ -64,11 +64,11 @@ class ProcessAnalyzer {
             }
         }
 
-        // Ordina per CPU % decrescente
+        // Sort by CPU % descending
         return suspicious.sorted { $0.cpuPercent > $1.cpuPercent }
     }
 
-    /// Trova processi noti come bloatware
+    /// Find processes known as bloatware
     func findKnownBloatware() -> [BloatwareMatch] {
         var matches: [BloatwareMatch] = []
         let processes = cpuMonitor.getProcessList()
@@ -94,66 +94,66 @@ class ProcessAnalyzer {
         return matches
     }
 
-    /// Carica database bloatware da JSON
+    /// Load bloatware database from JSON
     private func loadKnownBloatware() -> [KnownBloatware] {
         guard let url = Bundle.main.url(forResource: "KnownBloatware", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let container = try? JSONDecoder().decode(BloatwareContainer.self, from: data) else {
-            // Fallback: ritorna lista hardcoded
+            // Fallback: return default hardcoded list
             return getDefaultBloatwareList()
         }
         return container.knownBloatware
     }
 
-    /// Lista bloatware di default (fallback)
+    /// Default bloatware list (fallback)
     private func getDefaultBloatwareList() -> [KnownBloatware] {
         return [
             KnownBloatware(
                 name: "CleanMyMac",
                 processes: ["CleanMyMac", "moonlock", "HealthMonitor"],
-                reason: "Antivirus inutile su Mac, consuma RAM e CPU",
+                reason: "Unnecessary antivirus on Mac, wastes RAM and CPU",
                 removalSafe: true
             ),
             KnownBloatware(
                 name: "Logitech Options+",
                 processes: ["logioptionsplus", "LogiMgr"],
-                reason: "L'updater spesso si blocca in loop CPU (bug noto)",
+                reason: "Updater often gets stuck in CPU loop (known bug)",
                 removalSafe: true
             ),
             KnownBloatware(
                 name: "Adobe Creative Cloud",
                 processes: ["AdobeIPCBroker", "CCLibrary", "CCXProcess", "Adobe Desktop Service", "AdobeUpdateManager"],
-                reason: "Molti processi background anche senza app Adobe aperte",
+                reason: "Many background processes even without Adobe apps open",
                 removalSafe: false
             ),
             KnownBloatware(
                 name: "Boom Audio",
                 processes: ["Boom", "BoomAudio"],
-                reason: "Può causare problemi audio e CPU alta",
+                reason: "Can cause audio issues and high CPU usage",
                 removalSafe: true
             ),
             KnownBloatware(
                 name: "McAfee",
                 processes: ["McAfee", "MFEFirewall", "Mfecds"],
-                reason: "Antivirus non necessario su Mac, rallenta il sistema",
+                reason: "Unnecessary antivirus on Mac, slows down the system",
                 removalSafe: true
             ),
             KnownBloatware(
                 name: "Norton",
                 processes: ["Norton", "NortonSecurity", "SymDaemon"],
-                reason: "Antivirus non necessario su Mac, rallenta il sistema",
+                reason: "Unnecessary antivirus on Mac, slows down the system",
                 removalSafe: true
             ),
             KnownBloatware(
                 name: "Dropbox",
                 processes: ["Dropbox"],
-                reason: "Può usare molta CPU durante sync (non sempre problematico)",
+                reason: "Can use high CPU during sync (not always problematic)",
                 removalSafe: true
             )
         ]
     }
 
-    /// Ottiene lista top processi per CPU
+    /// Get top processes by CPU usage
     func getTopProcessesByCPU(limit: Int = 10) -> [ProcessInfo] {
         let processes = cpuMonitor.getProcessList()
         let now = Date()
@@ -179,7 +179,7 @@ class ProcessAnalyzer {
 
 // MARK: - Models
 
-/// Bloatware conosciuto
+/// Known bloatware
 struct KnownBloatware: Codable {
     let name: String
     let processes: [String]
@@ -194,7 +194,7 @@ struct KnownBloatware: Codable {
     }
 }
 
-/// Container per JSON
+/// Container for JSON
 struct BloatwareContainer: Codable {
     let knownBloatware: [KnownBloatware]
 
@@ -203,7 +203,7 @@ struct BloatwareContainer: Codable {
     }
 }
 
-/// Match tra processo e bloatware
+/// Match between process and bloatware
 struct BloatwareMatch {
     let bloatware: KnownBloatware
     let runningProcesses: [String]

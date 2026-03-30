@@ -9,7 +9,7 @@ struct OverviewTab: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Header stato salute - più grande e accattivante
+                // Health status header - larger and more engaging
                 EnhancedHealthHeader(health: monitor.health, temperature: monitor.temperature)
 
                 // Griglia metriche 2x2
@@ -57,7 +57,7 @@ struct OverviewTab: View {
                 // RAM dettaglio
                 RAMDetailView(memoryInfo: monitor.memoryInfo)
 
-                // Processi sospetti (se presenti)
+                // Suspicious processes (if present)
                 if !monitor.suspiciousProcesses.isEmpty {
                     SuspiciousProcessesCard(processes: monitor.suspiciousProcesses) { process in
                         monitor.terminateProcess(process)
@@ -103,7 +103,7 @@ struct OverviewTab: View {
     }
 }
 
-/// Header stato salute migliorato
+/// Improved health status header
 struct EnhancedHealthHeader: View {
     let health: SystemHealth
     let temperature: Double
@@ -166,7 +166,7 @@ struct EnhancedHealthHeader: View {
     }
 }
 
-/// Card metrica migliorata con barra di progresso
+/// Improved metric card with progress bar
 struct EnhancedMetricCard: View {
     let title: String
     let value: String

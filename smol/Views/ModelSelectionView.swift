@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Vista per selezione e download modelli LLM
+/// View for LLM model selection and download
 struct ModelSelectionView: View {
     @StateObject private var modelManager = ModelManager.shared
     @StateObject private var inferenceManager = LLMInferenceManager.shared
@@ -25,12 +25,12 @@ struct ModelSelectionView: View {
                         isBackendAvailable: inferenceManager.isBackendAvailable
                     )
 
-                    // Modello attivo
+                    // Active model
                     if let active = modelManager.activeModel {
                         ActiveModelCard(model: active)
                     }
 
-                    // Download in corso
+                    // Download in progress
                     if modelManager.isDownloading, let model = modelManager.downloadingModel {
                         DownloadProgressCard(
                             model: model,
@@ -39,12 +39,12 @@ struct ModelSelectionView: View {
                         )
                     }
 
-                    // Errore download
+                    // Download error
                     if let error = modelManager.downloadError {
                         ErrorBanner(message: error)
                     }
 
-                    // Lista modelli disponibili
+                    // Available models list
                     Text("Modelli Disponibili")
                         .font(.headline)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -490,7 +490,7 @@ struct BackendSelectionCard: View {
             .background(Color.secondary.opacity(0.1))
             .cornerRadius(8)
 
-            // Formati supportati
+            // Supported formats
             HStack(spacing: 4) {
                 Text("Formati:")
                     .font(.caption2)

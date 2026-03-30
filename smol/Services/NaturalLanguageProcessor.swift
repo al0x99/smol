@@ -1,8 +1,8 @@
 import Foundation
 import NaturalLanguage
 
-/// Processore di linguaggio naturale per query sul sistema
-/// Usa NaturalLanguage framework di Apple per analisi semantica
+/// Natural language processor for system queries
+/// Uses Apple's NaturalLanguage framework for semantic analysis
 class NaturalLanguageProcessor {
 
     // MARK: - Query Types
@@ -21,7 +21,7 @@ class NaturalLanguageProcessor {
 
     // MARK: - Public API
 
-    /// Processa una query in linguaggio naturale e restituisce una risposta
+    /// Processes a natural language query and returns a response
     func processQuery(
         _ query: String,
         cpuHistory: [AIDataPoint],
@@ -45,11 +45,11 @@ class NaturalLanguageProcessor {
 
     // MARK: - Intent Detection
 
-    /// Rileva l'intento della query usando NaturalLanguage
+    /// Detects the query intent using NaturalLanguage
     private func detectIntent(_ query: String) -> QueryIntent {
         let lowercased = query.lowercased()
 
-        // Pattern matching per intenti comuni
+        // Pattern matching for common intents
         let cpuKeywords = ["cpu", "processore", "processor", "uso cpu", "utilizzo cpu"]
         let memoryKeywords = ["memoria", "ram", "memory", "swap"]
         let tempKeywords = ["temperatura", "caldo", "temperature", "hot", "thermal", "scald"]
@@ -58,7 +58,7 @@ class NaturalLanguageProcessor {
         let processKeywords = ["processo", "app", "programma", "process", "application"]
         let anomalyKeywords = ["anomalia", "problema", "issue", "anomaly", "strano", "weird"]
 
-        // Rileva intento
+        // Detect intent
         if cpuKeywords.contains(where: { lowercased.contains($0) }) {
             return .cpuStatus
         }
@@ -83,11 +83,11 @@ class NaturalLanguageProcessor {
             return .processInfo(name: processName)
         }
 
-        // Usa NLP per analisi più avanzata
+        // Use NLP for more advanced analysis
         return analyzeWithNLP(query)
     }
 
-    /// Usa NaturalLanguage framework per analisi semantica
+    /// Uses NaturalLanguage framework for semantic analysis
     private func analyzeWithNLP(_ query: String) -> QueryIntent {
         let tagger = NLTagger(tagSchemes: [.lexicalClass, .nameType])
         tagger.string = query
@@ -111,7 +111,7 @@ class NaturalLanguageProcessor {
             return true
         }
 
-        // Se è una domanda generica sullo stato
+        // If it's a generic question about status
         if hasQuestion || query.contains("come") || query.contains("how") {
             return .generalStatus
         }
@@ -119,7 +119,7 @@ class NaturalLanguageProcessor {
         return .unknown
     }
 
-    /// Estrae nome processo dalla query
+    /// Extracts process name from the query
     private func extractProcessName(from query: String) -> String? {
         let tagger = NLTagger(tagSchemes: [.nameType])
         tagger.string = query
@@ -133,7 +133,7 @@ class NaturalLanguageProcessor {
             return true
         }
 
-        // Fallback: cerca parole che sembrano nomi di app (capitalizzate)
+        // Fallback: look for words that look like app names (capitalized)
         if processName == nil {
             let words = query.split(separator: " ")
             for word in words {
@@ -343,7 +343,7 @@ class NaturalLanguageProcessor {
 
     private func generateProcessResponse(name: String?, context: QueryContext) -> String {
         if let name = name {
-            // Per ora risposta generica, potrebbe essere esteso con lookup reale
+            // For now a generic response, could be extended with real lookup
             return "Per informazioni dettagliate su '\(name)', controlla la tab Processi o usa Activity Monitor."
         }
         return "Specifica il nome del processo per avere informazioni. Esempio: 'Come sta Chrome?'"

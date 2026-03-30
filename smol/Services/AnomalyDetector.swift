@@ -1,21 +1,21 @@
 import Foundation
 import Accelerate
 
-/// Rilevatore di anomalie basato su analisi statistica e pattern
-/// Usa vDSP (Accelerate framework) per calcoli vettoriali ottimizzati su Apple Silicon
+/// Anomaly detector based on statistical analysis and pattern recognition
+/// Uses vDSP (Accelerate framework) for vectorized calculations optimized on Apple Silicon
 class AnomalyDetector {
 
     // MARK: - Configuration
 
-    /// Deviazioni standard oltre le quali un valore è anomalo
+    /// Standard deviations beyond which a value is anomalous
     private let anomalyThreshold: Double = 2.5
 
-    /// Minimo numero di campioni per analisi affidabile
+    /// Minimum number of samples for reliable analysis
     private let minSamplesRequired = 30
 
     // MARK: - Public API
 
-    /// Rileva anomalie nei dati storici
+    /// Detect anomalies in historical data
     func detectAnomalies(
         cpuHistory: [AIDataPoint],
         memoryHistory: [AIDataPoint],
@@ -99,14 +99,14 @@ class AnomalyDetector {
         return nil
     }
 
-    /// Rileva pattern di memory leak usando regressione lineare
+    /// Detect memory leak pattern using linear regression
     private func detectMemoryLeak(_ values: [Double]) -> Double? {
         guard values.count >= 20 else { return nil }
 
-        // Prendi ultimi N valori
+        // Take last N values
         let recentValues = Array(values.suffix(60))
 
-        // Calcola slope usando regressione lineare
+        // Calculate slope using linear regression
         let n = Double(recentValues.count)
         let xMean = (n - 1) / 2
         let yMean = recentValues.reduce(0, +) / n
@@ -122,7 +122,7 @@ class AnomalyDetector {
 
         let slope = denominator > 0 ? numerator / denominator : 0
 
-        // Se slope > 0.1 per campione (0.1% per 2 secondi = 3% al minuto), possibile leak
+        // If slope > 0.1 per sample (0.1% per 2 seconds = 3% per minute), possible leak
         if slope > 0.1 {
             // Confidence based on R-squared
             var ssRes = 0.0
@@ -212,7 +212,7 @@ class AnomalyDetector {
         return anomalies
     }
 
-    /// Rileva oscillazioni nel segnale
+    /// Detect oscillations in the signal
     private func detectOscillation(_ values: [Double]) -> Double {
         guard values.count >= 10 else { return 0 }
 
@@ -230,7 +230,7 @@ class AnomalyDetector {
             }
         }
 
-        // Normalizza: più di 5 cambi direzione in 20 campioni = oscillazione
+        // Normalize: more than 5 direction changes in 20 samples = oscillation
         return min(Double(changes) / 5.0, 1.0)
     }
 
@@ -243,7 +243,7 @@ class AnomalyDetector {
         let max: Double
     }
 
-    /// Calcola statistiche usando Accelerate per performance
+    /// Calculate statistics using Accelerate for performance
     private func calculateStats(_ values: [Double]) -> Stats {
         guard !values.isEmpty else {
             return Stats(mean: 0, stdDev: 0, min: 0, max: 0)
@@ -254,7 +254,7 @@ class AnomalyDetector {
         var minVal: Double = 0
         var maxVal: Double = 0
 
-        // Usa vDSP per calcoli ottimizzati su Apple Silicon
+        // Use vDSP for optimized calculations on Apple Silicon
         vDSP_meanvD(values, 1, &mean, vDSP_Length(values.count))
         vDSP_minvD(values, 1, &minVal, vDSP_Length(values.count))
         vDSP_maxvD(values, 1, &maxVal, vDSP_Length(values.count))

@@ -2,7 +2,7 @@ import SwiftUI
 import Charts
 import Combine
 
-/// Finestra Dashboard con dettagli completi del sistema
+/// Dashboard window with full system details
 struct DashboardView: View {
     @ObservedObject var monitor: SystemMonitor
     @StateObject private var localization = LocalizationManager.shared

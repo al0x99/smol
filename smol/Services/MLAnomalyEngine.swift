@@ -6,8 +6,8 @@ import Combine
 import TabularData
 import os
 
-/// Engine ML per rilevamento anomalie con training on-device
-/// Usa MLBoostedTreeRegressor (Create ML) per training e Core ML per inferenza
+/// ML engine for on-device anomaly detection
+/// Uses MLBoostedTreeRegressor (Create ML) for training and Core ML for inference
 @MainActor
 class MLAnomalyEngine: ObservableObject {
     static let shared = MLAnomalyEngine()
@@ -28,7 +28,7 @@ class MLAnomalyEngine: ObservableObject {
 
     // Training data storage
     private var trainingData: [SystemMetricSample] = []
-    private let minTrainingSamples = 500 // ~16 minuti di dati a 2s
+    private let minTrainingSamples = 500 // ~16 minutes of data at 2s
     private let maxTrainingSamples = 10000
 
     // Model URLs
@@ -41,7 +41,7 @@ class MLAnomalyEngine: ObservableObject {
         let cpuUsage: Double
         let memoryPressure: Double
         let temperature: Double
-        let isAnomaly: Bool // Label per supervised learning
+        let isAnomaly: Bool // Label for supervised learning
     }
 
     struct AnomalyPrediction {
@@ -78,7 +78,7 @@ class MLAnomalyEngine: ObservableObject {
 
     // MARK: - Data Collection
 
-    /// Aggiunge un campione per il training
+    /// Adds a sample for training
     func addSample(cpu: Double, memory: Double, temp: Double, isAnomaly: Bool = false) {
         let sample = SystemMetricSample(
             timestamp: Date(),
@@ -90,30 +90,30 @@ class MLAnomalyEngine: ObservableObject {
 
         trainingData.append(sample)
 
-        // Limita la dimensione
+        // Limit the size
         if trainingData.count > maxTrainingSamples {
             trainingData.removeFirst(trainingData.count - maxTrainingSamples)
         }
 
-        // Salva periodicamente
+        // Save periodically
         if trainingData.count % 100 == 0 {
             saveTrainingData()
         }
     }
 
-    /// Numero di campioni raccolti
+    /// Number of collected samples
     var samplesCollected: Int {
         trainingData.count
     }
 
-    /// Indica se ci sono abbastanza dati per il training
+    /// Indicates if there is enough data for training
     var hasEnoughDataForTraining: Bool {
         trainingData.count >= minTrainingSamples
     }
 
     // MARK: - Training with Create ML Components
 
-    /// Addestra i modelli con i dati raccolti usando Create ML Components
+    /// Trains the models with collected data using Create ML Components
     func trainModels() async throws {
         guard hasEnoughDataForTraining else {
             throw MLError.insufficientData(required: minTrainingSamples, available: trainingData.count)
@@ -123,14 +123,14 @@ class MLAnomalyEngine: ObservableObject {
         trainingProgress = 0
 
         do {
-            // 1. Prepara i dati come DataFrame
+            // 1. Prepare data as DataFrame
             trainingProgress = 0.1
             let dataFrame = prepareDataFrame()
 
-            // Split 80/20 per training e validation
+            // Split 80/20 for training and validation
             let (trainDF, testDF) = splitDataFrame(dataFrame, ratio: 0.8)
 
-            // 2. Addestra il modello CPU
+            // 2. Train the CPU model
             trainingProgress = 0.3
             cpuModel = try await trainComponentsModel(
                 trainingData: trainDF,
@@ -138,7 +138,7 @@ class MLAnomalyEngine: ObservableObject {
                 featureColumns: ["hour", "minute", "dayOfWeek", "memoryPressure", "temperature"]
             )
 
-            // 3. Addestra il modello Memory
+            // 3. Train the Memory model
             trainingProgress = 0.5
             memoryModel = try await trainComponentsModel(
                 trainingData: trainDF,
@@ -146,7 +146,7 @@ class MLAnomalyEngine: ObservableObject {
                 featureColumns: ["hour", "minute", "dayOfWeek", "cpuUsage", "temperature"]
             )
 
-            // 4. Addestra il modello Temperature
+            // 4. Train the Temperature model
             trainingProgress = 0.7
             temperatureModel = try await trainComponentsModel(
                 trainingData: trainDF,
@@ -154,11 +154,11 @@ class MLAnomalyEngine: ObservableObject {
                 featureColumns: ["hour", "minute", "dayOfWeek", "cpuUsage", "memoryPressure"]
             )
 
-            // 5. Valuta l'accuracy sui dati di test
+            // 5. Evaluate accuracy on test data
             trainingProgress = 0.9
             modelAccuracy = evaluateModels(testData: testDF)
 
-            // 6. Salva i modelli
+            // 6. Save the models
             try saveModels()
 
             trainingProgress = 1.0
@@ -171,7 +171,7 @@ class MLAnomalyEngine: ObservableObject {
         }
     }
 
-    /// Prepara DataFrame da trainingData
+    /// Prepare DataFrame from trainingData
     private func prepareDataFrame() -> DataFrame {
         let calendar = Calendar.current
 
@@ -206,23 +206,23 @@ class MLAnomalyEngine: ObservableObject {
         return df
     }
 
-    /// Split DataFrame in training e test
+    /// Split DataFrame into training and test
     private func splitDataFrame(_ df: DataFrame, ratio: Double) -> (DataFrame, DataFrame) {
         let shuffled = df.randomSplit(by: ratio)
-        // Converti slices in DataFrame completi
+        // Convert slices to complete DataFrames
         return (DataFrame(shuffled.0), DataFrame(shuffled.1))
     }
 
-    /// Addestra un modello usando Create ML con MLBoostedTreeRegressor
+    /// Train a model using Create ML with MLBoostedTreeRegressor
     private func trainComponentsModel(
         trainingData: DataFrame,
         targetColumn: String,
         featureColumns: [String]
     ) async throws -> MLModel {
 
-        // Usa MLBoostedTreeRegressor che è l'API stabile per training
-        // Nota: il warning su init deprecato è un problema noto dell'API Apple
-        // che non ha un init non-deprecato completo. Usiamo l'approccio consigliato.
+        // Use MLBoostedTreeRegressor which is the stable API for training
+        // Note: the warning about deprecated init is a known Apple API issue
+        // that has no complete non-deprecated init. We use the recommended approach.
         var params = MLBoostedTreeRegressor.ModelParameters(validation: .none)
         params.maxDepth = 6
         params.maxIterations = 100
@@ -240,18 +240,18 @@ class MLAnomalyEngine: ObservableObject {
             parameters: params
         )
 
-        // Esporta come Core ML model
+        // Export as Core ML model
         let modelPath = modelsDirectory.appendingPathComponent("\(targetColumn)_temp.mlmodel")
 
-        // Scrivi il modello
+        // Write the model
         try regressor.write(to: modelPath)
 
-        // Compila per runtime
+        // Compile for runtime
         let compiledURL = try await MLModel.compileModel(at: modelPath)
         return try MLModel(contentsOf: compiledURL)
     }
 
-    /// Valuta l'accuracy dei modelli
+    /// Evaluate model accuracy
     private func evaluateModels(testData: DataFrame) -> Double {
         guard let cpuModel = cpuModel,
               let memoryModel = memoryModel,
@@ -262,7 +262,7 @@ class MLAnomalyEngine: ObservableObject {
         var totalError = 0.0
         var count = 0
 
-        // Estrai colonne (DataFrame columns non sono optional)
+        // Extract columns (DataFrame columns are not optional)
         let cpuCol = testData["cpuUsage", Double.self]
         let memCol = testData["memoryPressure", Double.self]
         let tempCol = testData["temperature", Double.self]
@@ -327,7 +327,7 @@ class MLAnomalyEngine: ObservableObject {
 
     // MARK: - Prediction
 
-    /// Predice se i valori correnti sono anomali
+    /// Predicts whether current values are anomalous
     func predict(cpu: Double, memory: Double, temp: Double) -> AnomalyPrediction {
         guard isModelTrained,
               let cpuModel = cpuModel,
@@ -397,7 +397,7 @@ class MLAnomalyEngine: ObservableObject {
         }
     }
 
-    /// Predizione euristica (fallback senza modello)
+    /// Heuristic prediction (fallback without model)
     private func heuristicPrediction(cpu: Double, memory: Double, temp: Double) -> AnomalyPrediction {
         let cpuAnomaly = cpu > 85
         let memAnomaly = memory > 80
@@ -432,7 +432,11 @@ class MLAnomalyEngine: ObservableObject {
             }
             return nil
         }
-        return try! MLDictionaryFeatureProvider(dictionary: features)
+        guard let provider = try? MLDictionaryFeatureProvider(dictionary: features) else {
+            // Return empty provider as fallback — prediction will fail gracefully
+            return (try? MLDictionaryFeatureProvider(dictionary: [:])) ?? MLDictionaryFeatureProvider()
+        }
+        return provider
     }
 
     private func saveModels() throws {
@@ -505,7 +509,7 @@ class MLAnomalyEngine: ObservableObject {
         }
     }
 
-    /// Resetta tutti i dati e modelli
+    /// Resets all data and models
     func reset() {
         trainingData = []
         cpuModel = nil
@@ -535,11 +539,11 @@ class MLAnomalyEngine: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .insufficientData(let required, let available):
-                return "Dati insufficienti: \(available)/\(required) campioni"
+                return "Insufficient data: \(available)/\(required) samples"
             case .trainingFailed(let reason):
-                return "Training fallito: \(reason)"
+                return "Training failed: \(reason)"
             case .modelNotFound:
-                return "Modello non trovato"
+                return "Model not found"
             }
         }
     }

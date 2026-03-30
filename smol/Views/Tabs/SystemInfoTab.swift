@@ -8,7 +8,7 @@ struct SystemInfoTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // Header con icona Mac
+                // Header with Mac icon
                 HStack(spacing: 16) {
                     Image(systemName: "desktopcomputer")
                         .font(.system(size: 48))
@@ -38,7 +38,7 @@ struct SystemInfoTab: View {
                         .fill(Color.accentColor.opacity(0.1))
                 )
 
-                // Specifiche Hardware
+                // Hardware Specs
                 GroupBox {
                     VStack(spacing: 0) {
                         SystemInfoRow(icon: "cpu", label: "system.processor".localized(localization), value: getProcessorName(), color: .orange)
@@ -53,7 +53,7 @@ struct SystemInfoTab: View {
                         .font(.headline)
                 }
 
-                // Info Sistema
+                // System Info
                 GroupBox {
                     VStack(spacing: 0) {
                         SystemInfoRow(icon: "apple.logo", label: "macOS", value: Foundation.ProcessInfo.processInfo.operatingSystemVersionString, color: .gray)
@@ -68,7 +68,7 @@ struct SystemInfoTab: View {
                         .font(.headline)
                 }
 
-                // Info App con monitoraggio risorse smol
+                // App Info with smol resource monitoring
                 SmolSelfMonitorView()
 
                 // Footer
@@ -127,7 +127,7 @@ struct SystemInfoTab: View {
     }
 }
 
-/// Riga info sistema con icona colorata
+/// System info row with colored icon
 struct SystemInfoRow: View {
     let icon: String
     let label: String

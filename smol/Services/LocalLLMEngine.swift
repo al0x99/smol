@@ -2,10 +2,10 @@ import Foundation
 import NaturalLanguage
 import Combine
 
-/// Engine per generazione testo intelligente
-/// Usa embedding semantici e template avanzati per risposte contestuali
-/// Preparato per integrazione MLX quando disponibile
-/// Include tracking risorse per trasparenza all'utente
+/// Engine for intelligent text generation
+/// Uses semantic embeddings and advanced templates for contextual responses
+/// Prepared for MLX integration when available
+/// Includes resource tracking for user transparency
 @MainActor
 class LocalLLMEngine: ObservableObject {
     static let shared = LocalLLMEngine()
@@ -31,14 +31,14 @@ class LocalLLMEngine: ObservableObject {
     // MARK: - Initialization
 
     init() {
-        // Carica embedding italiano/inglese per similarità semantica
+        // Load Italian/English embedding for semantic similarity
         embedding = NLEmbedding.wordEmbedding(for: .italian) ?? NLEmbedding.wordEmbedding(for: .english)
         tagger = NLTagger(tagSchemes: [.lexicalClass, .nameType, .sentimentScore])
         recognizer = NLLanguageRecognizer()
 
         isInitialized = embedding != nil
 
-        // Carica contesto salvato
+        // Load saved context
         loadContext()
     }
 
@@ -61,7 +61,7 @@ class LocalLLMEngine: ObservableObject {
         let prediction: AnomalyPredictionInfo?
     }
 
-    /// Info sulla predizione ML (disaccoppiato da MLAnomalyEngine)
+    /// ML prediction info (decoupled from MLAnomalyEngine)
     struct AnomalyPredictionInfo {
         let isAnomaly: Bool
         let confidence: Double
@@ -73,21 +73,21 @@ class LocalLLMEngine: ObservableObject {
 
     // MARK: - Response Generation
 
-    /// Risultato con risposta e costo risorse
+    /// Result with response and resource cost
     struct GenerationResult {
         let response: String
         let resourceCost: ResourceTracker.ResourceCost
         let costSummary: String
     }
 
-    /// Stima il costo prima di generare (per UI di conferma)
+    /// Estimate cost before generating (for confirmation UI)
     func estimateCost(query: String) -> ResourceTracker.CostEstimate {
         let wordCount = query.split(separator: " ").count
-        let estimatedTokens = wordCount * 2  // Approssimazione
+        let estimatedTokens = wordCount * 2  // Approximation
         return ResourceTracker.estimateLLMCost(inputTokens: estimatedTokens, modelSize: .tiny)
     }
 
-    /// Genera una risposta intelligente alla query
+    /// Generate an intelligent response to the query
     func generateResponse(
         query: String,
         systemContext: SystemContext
@@ -95,31 +95,31 @@ class LocalLLMEngine: ObservableObject {
         isGenerating = true
         defer { isGenerating = false }
 
-        // Traccia risorse durante la generazione
+        // Track resources during generation
         let tracker = ResourceTracker.shared
         tracker.startTracking()
 
-        // 1. Analizza la query
+        // 1. Analyze the query
         let analysis = analyzeQuery(query)
 
-        // 2. Aggiungi al contesto
+        // 2. Add to context
         addToContext(role: "user", content: query, sentiment: analysis.sentiment, topics: analysis.topics)
 
-        // 3. Genera risposta basata sull'analisi
+        // 3. Generate response based on analysis
         let response = await buildResponse(
             query: query,
             analysis: analysis,
             systemContext: systemContext
         )
 
-        // Conta token approssimati
+        // Count approximate tokens
         let outputTokens = response.split(separator: " ").count
         tracker.addTokens(outputTokens)
 
-        // 4. Aggiungi risposta al contesto
+        // 4. Add response to context
         addToContext(role: "assistant", content: response, sentiment: nil, topics: analysis.topics)
 
-        // 5. Ferma tracking e salva costo
+        // 5. Stop tracking and save cost
         let cost = tracker.stopTracking()
         lastResourceCost = cost
 
@@ -127,7 +127,7 @@ class LocalLLMEngine: ObservableObject {
         return response
     }
 
-    /// Genera risposta con report dettagliato delle risorse
+    /// Generate response with detailed resource report
     func generateResponseWithCost(
         query: String,
         systemContext: SystemContext
@@ -203,7 +203,7 @@ class LocalLLMEngine: ObservableObject {
             return true
         }
 
-        // Intent detection con keyword matching + semantic similarity
+        // Intent detection with keyword matching + semantic similarity
         let intent = detectIntent(lowercased)
 
         // Urgency detection
@@ -226,7 +226,7 @@ class LocalLLMEngine: ObservableObject {
     }
 
     private func detectIntent(_ query: String) -> QueryIntent {
-        // Keywords per ogni intent
+        // Keywords for each intent
         let intentKeywords: [QueryIntent: [String]] = [
             .statusCheck: ["come sta", "status", "stato", "situazione", "salute", "quanto", "attuale"],
             .troubleshoot: ["problema", "errore", "lento", "bug", "crash", "perché", "non funziona", "aiuto"],
@@ -243,7 +243,7 @@ class LocalLLMEngine: ObservableObject {
             }
         }
 
-        // Usa embedding per similarità se disponibile
+        // Use embedding for similarity if available
         if let embedding = embedding {
             let queryWords = query.split(separator: " ").map(String.init)
             var bestIntent = QueryIntent.chitchat
@@ -253,11 +253,11 @@ class LocalLLMEngine: ObservableObject {
                 var score = 0.0
                 for word in queryWords {
                     for keyword in keywords {
-                        // NLEmbedding.distance restituisce Double (non Optional)
-                        // Ritorna un valore molto alto se le parole non sono nel vocabolario
+                        // NLEmbedding.distance returns Double (not Optional)
+                        // Returns a very high value if words are not in vocabulary
                         let distance = embedding.distance(between: word, and: keyword)
-                        if distance < 2.0 { // Solo se le parole sono nel vocabolario
-                            score += max(0, 1 - distance) // Converti distanza in similarità
+                        if distance < 2.0 { // Only if words are in vocabulary
+                            score += max(0, 1 - distance) // Convert distance to similarity
                         }
                     }
                 }
@@ -283,7 +283,7 @@ class LocalLLMEngine: ObservableObject {
         systemContext: SystemContext
     ) async -> String {
 
-        // Costruisci risposta basata sull'intent
+        // Build response based on intent
         switch analysis.intent {
         case .statusCheck:
             return buildStatusResponse(systemContext: systemContext, topics: analysis.topics)
@@ -318,19 +318,19 @@ class LocalLLMEngine: ObservableObject {
         let mem = systemContext.memoryPressure
         let temp = systemContext.temperature
 
-        // Determina focus basato sui topics
+        // Determine focus based on topics
         let focusCPU = topics.contains(where: { $0.lowercased().contains("cpu") || $0.lowercased().contains("processore") })
         let focusMemory = topics.contains(where: { $0.lowercased().contains("memoria") || $0.lowercased().contains("ram") })
         let focusTemp = topics.contains(where: { $0.lowercased().contains("temperatura") || $0.lowercased().contains("caldo") })
 
         var parts: [String] = []
 
-        // Valutazione generale
+        // Overall assessment
         let healthScore = calculateHealthScore(cpu: cpu, memory: mem, temp: temp)
         let healthEmoji = healthScore > 80 ? "✅" : (healthScore > 50 ? "⚠️" : "🔴")
 
         if !focusCPU && !focusMemory && !focusTemp {
-            // Risposta generale
+            // General response
             parts.append("\(healthEmoji) **Stato generale: \(healthDescriptor(healthScore))**")
             parts.append("")
         }
@@ -350,7 +350,7 @@ class LocalLLMEngine: ObservableObject {
             parts.append("• **Temperatura**: \(Int(temp))°C (\(tempStatus))")
         }
 
-        // Aggiungi prediction ML se disponibile
+        // Add ML prediction if available
         if let prediction = systemContext.prediction {
             if prediction.isAnomaly {
                 parts.append("")
@@ -358,7 +358,7 @@ class LocalLLMEngine: ObservableObject {
             }
         }
 
-        // Aggiungi consigli se presenti
+        // Add advice if present
         if !systemContext.activeAdvice.isEmpty {
             parts.append("")
             parts.append("**Suggerimenti attivi:**")
@@ -652,7 +652,7 @@ class LocalLLMEngine: ObservableObject {
 
         conversationContext.append(item)
 
-        // Mantieni solo gli ultimi N items
+        // Keep only the last N items
         if conversationContext.count > maxContextItems {
             conversationContext.removeFirst(conversationContext.count - maxContextItems)
         }

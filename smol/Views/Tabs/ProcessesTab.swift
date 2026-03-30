@@ -27,9 +27,9 @@ struct ProcessesTab: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header con statistiche
+            // Header with statistics
             HStack(spacing: 16) {
-                // Ricerca
+                // Search
                 HStack {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.secondary)

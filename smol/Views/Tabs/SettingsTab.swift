@@ -174,7 +174,7 @@ struct SmolSelfMonitorView: View {
 
                 Divider().padding(.vertical, 12)
 
-                // Sezione monitoraggio risorse in tempo reale
+                // Real-time resource monitoring section
                 HStack {
                     Image(systemName: "gauge.with.dots.needle.33percent")
                         .foregroundColor(.orange)

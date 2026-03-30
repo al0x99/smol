@@ -36,11 +36,11 @@ struct smolApp: App {
     }
 }
 
-// MARK: - App Delegate per single instance
+// MARK: - App Delegate for single instance
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
-        // Chiudi altre istanze di smol
+        // Close other instances of smol
         killOtherInstances()
     }
 
@@ -49,7 +49,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let runningApps = NSWorkspace.shared.runningApplications
 
         for app in runningApps {
-            // Cerca altre istanze di smol
+            // Look for other instances of smol
             if app.bundleIdentifier == Bundle.main.bundleIdentifier,
                app.processIdentifier != currentPID {
                 SmolLog.general.info("Terminating other instance (PID \(app.processIdentifier))")

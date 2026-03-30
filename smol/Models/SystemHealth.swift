@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Rappresenta lo stato di salute del sistema
+/// Represents the system health state
 enum SystemHealth: Equatable {
     case healthy
     case warning(reason: String)
@@ -31,12 +31,12 @@ enum SystemHealth: Equatable {
     }
 }
 
-/// Informazioni sulla memoria di sistema
+/// System memory information
 struct MemoryInfo {
-    let used: UInt64           // Bytes usati
-    let total: UInt64          // Bytes totali
+    let used: UInt64           // Used bytes
+    let total: UInt64          // Total bytes
     let pressure: Double       // 0-100%
-    let swapUsed: UInt64       // Bytes swap
+    let swapUsed: UInt64       // Swap bytes
 
     var pressureLevel: String {
         if pressure < 50 { return "LOW" }
@@ -49,17 +49,17 @@ struct MemoryInfo {
     }
 }
 
-/// Informazioni su un processo
+/// Process information
 struct ProcessInfo: Identifiable {
     let id: Int32              // PID
     let name: String
     let cpuPercent: Double
     let memoryBytes: UInt64
     let startTime: Date
-    let cpuTimeMinutes: Double // Minuti CPU consumati
+    let cpuTimeMinutes: Double // CPU minutes consumed
 
     var isAnomaly: Bool {
-        // Alert se CPU > 30% per processo che gira da più di 10 minuti
+        // Alert if CPU > 30% for a process running more than 10 minutes
         let runningMinutes = Date().timeIntervalSince(startTime) / 60
         return cpuPercent > 30 && runningMinutes > 10
     }
@@ -69,7 +69,7 @@ struct ProcessInfo: Identifiable {
     }
 }
 
-/// Alert per processo anomalo
+/// Alert for anomalous process
 struct ProcessAlert: Identifiable {
     let id = UUID()
     let process: ProcessInfo

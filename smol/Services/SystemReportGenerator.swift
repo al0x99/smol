@@ -1,12 +1,12 @@
 import Foundation
 
-/// Generatore di report sul sistema
-/// Crea report testuali dettagliati sullo stato del sistema
+/// System report generator
+/// Creates detailed text reports on system status
 class SystemReportGenerator {
 
     // MARK: - Public API
 
-    /// Genera un report completo sul sistema
+    /// Generate a comprehensive system report
     func generate(
         cpuHistory: [AIDataPoint],
         memoryHistory: [AIDataPoint],
@@ -305,7 +305,7 @@ class SystemReportGenerator {
 
     // MARK: - Export
 
-    /// Esporta il report come testo formattato
+    /// Export the report as formatted text
     func exportAsText(_ report: SystemReport) -> String {
         var text = """
         ═══════════════════════════════════════

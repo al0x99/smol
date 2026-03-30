@@ -1,9 +1,9 @@
 import Foundation
 import os
 
-/// Engine di inferenza basato su MLX (Apple Silicon optimized)
-/// Supporta modelli SafeTensors/MLX format
-/// Richiede mlx-swift package
+/// Inference engine based on MLX (Apple Silicon optimized)
+/// Supports SafeTensors/MLX format models
+/// Requires mlx-swift package
 class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
 
     // MARK: - Properties
@@ -18,14 +18,14 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
     private var tokenizer: Any?  // Tokenizer
     private var currentConfig: LLMConfig?
 
-    // Stato generazione (thread-safe access)
+    // Generation state (thread-safe access)
     private var isGeneratingFlag = false
     private var shouldCancel = false
     private let stateLock = NSLock()
 
     // MARK: - Static
 
-    /// Verifica se MLX è disponibile (richiede Apple Silicon + mlx-swift)
+    /// Check if MLX is available (requires Apple Silicon + mlx-swift)
     static var isAvailable: Bool {
         #if arch(arm64) && canImport(MLX)
         return true
@@ -37,7 +37,7 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
     // MARK: - Initialization
 
     init() {
-        // MLX si inizializza automaticamente
+        // MLX initializes automatically
     }
 
     deinit {
@@ -47,7 +47,7 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
     // MARK: - LLMInferenceEngine Protocol
 
     func loadModel(at path: URL, config: LLMConfig) async throws {
-        // Unload precedente se presente
+        // Unload previous if present
         if isModelLoaded {
             unloadModel()
         }
@@ -56,7 +56,7 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
             throw LLMError.modelLoadFailed("File non trovato: \(path.path)")
         }
 
-        // Verifica estensione
+        // Verify extension
         let ext = path.pathExtension.lowercased()
         guard ext == "safetensors" || ext == "mlx" || path.lastPathComponent.contains("mlx") else {
             throw LLMError.invalidModelFormat
@@ -64,7 +64,7 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
 
         currentConfig = config
 
-        // Carica il modello in background
+        // Load the model in background
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
@@ -85,7 +85,7 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
     func unloadModel() {
         shouldCancel = true
 
-        // Rilascia risorse MLX
+        // Release MLX resources
         model = nil
         tokenizer = nil
 
@@ -152,7 +152,7 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
         )
     }
 
-    /// Annulla generazione in corso
+    /// Cancel generation in progress
     func cancelGeneration() {
         shouldCancel = true
     }
@@ -160,19 +160,19 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
     // MARK: - Private Implementation
 
     private func loadModelSync(at path: URL, config: LLMConfig) throws {
-        // Con MLX, il caricamento è ottimizzato per Apple Silicon
-        // Usa unified memory - nessun trasferimento GPU necessario
+        // With MLX, loading is optimized for Apple Silicon
+        // Uses unified memory - no GPU transfer needed
 
         #if canImport(MLX)
-        // Carica con mlx-swift
+        // Load with mlx-swift
         // let modelConfig = MLXModelConfig(...)
         // model = try MLXLLamaModel.load(from: path, config: modelConfig)
         // tokenizer = try Tokenizer.load(from: path.deletingLastPathComponent())
         #else
-        // Placeholder - simula caricamento
+        // Placeholder - simulates loading
         SmolLog.ai.debug("MLXEngine: Simulating model load from \(path.lastPathComponent, privacy: .public)")
 
-        // Simula tempo di caricamento
+        // Simulate loading time
         Thread.sleep(forTimeInterval: 0.5)
         #endif
 
@@ -185,7 +185,7 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
             throw LLMError.modelNotLoaded
         }
 
-        // Prepara prompt con system (usato quando MLX è disponibile)
+        // Prepare prompt with system (used when MLX is available)
         let fullPrompt: String
         if let systemPrompt = config.systemPrompt {
             fullPrompt = "<|system|>\n\(systemPrompt)</s>\n<|user|>\n\(prompt)</s>\n<|assistant|>\n"
@@ -194,32 +194,32 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
         }
 
         #if canImport(MLX)
-        // Genera con MLX
+        // Generate with MLX
         // let tokens = tokenizer.encode(fullPrompt)
         // for await token in model.generate(tokens: tokens, config: config) {
         //     if shouldCancel { break }
         //     let text = tokenizer.decode([token])
         //     onToken(text)
         // }
-        _ = fullPrompt // Usato nel codice MLX sopra
+        _ = fullPrompt // Used in MLX code above
         #else
-        _ = fullPrompt // Sarà usato quando MLX è disponibile
-        // Placeholder - genera risposta simulata
+        _ = fullPrompt // Will be used when MLX is available
+        // Placeholder - simulated response
         let placeholderResponse = """
         [MLX Backend - Demo Mode]
-        Questo è un placeholder. Per funzionalità completa:
-        1. Aggiungi mlx-swift come dipendenza SPM
-        2. Scarica un modello compatibile MLX
-        3. Ricompila l'app
+        This is a placeholder. For full functionality:
+        1. Add mlx-swift as an SPM dependency
+        2. Download a compatible MLX model
+        3. Rebuild the app
 
-        Il tuo prompt era: "\(prompt.prefix(100))..."
+        Your prompt was: "\(prompt.prefix(100))..."
         """
 
-        // Simula streaming token per token
+        // Simulate streaming token by token
         for word in placeholderResponse.split(separator: " ") {
             if shouldCancel { break }
             onToken(String(word) + " ")
-            Thread.sleep(forTimeInterval: 0.02)  // Simula tempo di generazione
+            Thread.sleep(forTimeInterval: 0.02)  // Simulate generation time
         }
         #endif
     }
@@ -228,23 +228,23 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
 // MARK: - MLX Specific Extensions
 
 extension MLXEngine {
-    /// Stima memoria richiesta per un modello
+    /// Estimate memory requirements for a model
     static func estimateMemoryRequirements(for modelPath: URL) -> UInt64 {
-        // MLX usa unified memory, quindi stima basata su dimensione file
+        // MLX uses unified memory, so estimate based on file size
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: modelPath.path),
               let size = attrs[.size] as? UInt64 else {
             return 0
         }
 
-        // Per modelli quantizzati, memoria ~= dimensione file
-        // Per float16/32, memoria può essere 1.5-2x
+        // For quantized models, memory ~= file size
+        // For float16/32, memory can be 1.5-2x
         return size
     }
 
-    /// Verifica se il dispositivo supporta MLX con prestazioni ottimali
+    /// Check if the device supports MLX with optimal performance
     static var hasOptimalMLXSupport: Bool {
         #if arch(arm64)
-        // Verifica generazione chip (M1/M2/M3/M4)
+        // Verify chip generation (M1/M2/M3/M4)
         var sysinfo = utsname()
         uname(&sysinfo)
         let machine = withUnsafePointer(to: &sysinfo.machine) {
@@ -253,14 +253,14 @@ extension MLXEngine {
             }
         }
 
-        // Mac mini, MacBook, iMac con Apple Silicon
+        // Mac mini, MacBook, iMac with Apple Silicon
         return machine.contains("arm64") || machine.contains("Mac")
         #else
         return false
         #endif
     }
 
-    /// Informazioni sul backend
+    /// Backend information
     var backendInfo: String {
         var info = "MLX - Apple Machine Learning Framework\n"
         info += "Ottimizzato per Apple Silicon\n"
@@ -280,7 +280,7 @@ extension MLXEngine {
 
 // MARK: - MLX Model Formats
 
-/// Formati modello supportati da MLX
+/// Model formats supported by MLX
 enum MLXModelFormat: String, CaseIterable {
     case safetensors = "safetensors"
     case mlx = "mlx"
@@ -304,7 +304,7 @@ enum MLXModelFormat: String, CaseIterable {
 
 // MARK: - MLX Configuration
 
-/// Configurazione specifica per MLX
+/// MLX-specific configuration
 struct MLXConfig {
     var useMetalGPU: Bool = true
     var memoryLimit: UInt64 = 0  // 0 = auto

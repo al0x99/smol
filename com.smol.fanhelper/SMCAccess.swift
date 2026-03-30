@@ -21,19 +21,19 @@ private func smcLog(_ format: String, _ args: CVarArg...) {
     }
 }
 
-/// Accesso diretto SMC per helper privilegiato
-/// Questa classe legge/scrive chiavi SMC per controllo ventole
+/// Direct SMC access for privileged helper
+/// This class reads/writes SMC keys for fan control
 class SMCAccess {
     private var connection: io_connect_t = 0
     private var isConnected = false
 
-    // SMC selectors (come in SMCKit)
+    // SMC selectors (as in SMCKit)
     private let KERNEL_INDEX_SMC: UInt32 = 2
     private let SMC_CMD_READ_BYTES: UInt8 = 5
     private let SMC_CMD_WRITE_BYTES: UInt8 = 6
     private let SMC_CMD_READ_KEYINFO: UInt8 = 9
 
-    // Cache per key info (riduce chiamate SMC)
+    // Cache for key info (reduces SMC calls)
     private var keyInfoCache: [UInt32: SMCKeyInfoData] = [:]
 
     init() {
@@ -47,7 +47,7 @@ class SMCAccess {
     // MARK: - Connection
 
     private func openConnection() {
-        // Prova prima AppleSMC (Intel), poi AppleSMCKeysEndpoint (Apple Silicon)
+        // Try AppleSMC (Intel) first, then AppleSMCKeysEndpoint (Apple Silicon)
         var service = IOServiceGetMatchingService(
             kIOMainPortDefault,
             IOServiceMatching("AppleSMC")
@@ -87,7 +87,7 @@ class SMCAccess {
 
     // MARK: - Public API
 
-    /// Ottiene il numero di ventole dal SMC
+    /// Gets the number of fans from SMC
     func getFanCount() -> Int {
         guard let val = readKey("FNum") else {
             smcLog("smolFanHelper: Failed to read FNum key")
@@ -99,7 +99,7 @@ class SMCAccess {
         return count
     }
 
-    /// Ottiene RPM attuale di una ventola
+    /// Gets the current RPM of a fan
     func getFanRPM(index: Int) -> Int {
         let key = "F\(index)Ac"
         guard let val = readKey(key) else { return 0 }
@@ -108,7 +108,7 @@ class SMCAccess {
         return rpm
     }
 
-    /// Ottiene RPM minimo di una ventola
+    /// Gets the minimum RPM of a fan
     func getFanMinRPM(index: Int) -> Int {
         let key = "F\(index)Mn"
         guard let val = readKey(key) else {
@@ -120,7 +120,7 @@ class SMCAccess {
         return rpm
     }
 
-    /// Ottiene RPM massimo di una ventola
+    /// Gets the maximum RPM of a fan
     func getFanMaxRPM(index: Int) -> Int {
         let key = "F\(index)Mx"
         guard let val = readKey(key) else {
@@ -132,7 +132,7 @@ class SMCAccess {
         return rpm
     }
 
-    /// Ottiene RPM target di una ventola
+    /// Gets the target RPM of a fan
     func getFanTargetRPM(index: Int) -> Int {
         let key = "F\(index)Tg"
         guard let val = readKey(key) else {
@@ -144,7 +144,7 @@ class SMCAccess {
         return rpm
     }
 
-    /// Abilita/disabilita force mode per una ventola
+    /// Enable/disable force mode for a fan
     /// Su Apple Silicon (M1/M2/M3/M4), usa F%dMd invece di FS!
     /// Mode values: 0=off?, 1=manual?, 2=?, 3=auto (default)
     ///
@@ -224,7 +224,7 @@ class SMCAccess {
         let modeKey = "F\(index)Md"
         if let val = readKey(modeKey) {
             let currentMode = Int(val.bytes.0)
-            // Mode 1 = manual/forced, Mode 3 = auto (osservato su M4 Max)
+            // Mode 1 = manual/forced, Mode 3 = auto (observed on M4 Max)
             let modeValue: UInt8 = forced ? 1 : 3
 
             smcLog("smolFanHelper: F%dMd current=%d, setting to %d", index, currentMode, modeValue)
@@ -232,7 +232,7 @@ class SMCAccess {
             let success = writeKey(modeKey, dataSize: val.dataSize, dataType: val.dataType,
                                    byte0: modeValue, byte1: 0)
 
-            // Verifica se la scrittura ha avuto effetto
+            // Verify if the write took effect
             if success {
                 if let newVal = readKey(modeKey) {
                     let newMode = Int(newVal.bytes.0)
@@ -248,7 +248,7 @@ class SMCAccess {
             return success
         }
 
-        // Se nessun key esiste, su Apple Silicon potrebbe funzionare senza force mode
+        // If no key exists, on Apple Silicon it may work without force mode
         smcLog("smolFanHelper: No force mode key found (FOFC, FS!, or F%dMd). Will try direct target write.", index)
         return false
     }
@@ -898,11 +898,11 @@ class SMCAccess {
         smcLog("smolFanHelper: === End FOFC key search ===")
     }
 
-    /// Imposta RPM target per una ventola
+    /// Sets target RPM for a fan
     func setFanTargetRPM(index: Int, rpm: Int) -> Bool {
         let key = "F\(index)Tg"
 
-        // Prima leggi per ottenere dataSize e dataType
+        // First read to get dataSize and dataType
         guard let val = readKey(key) else {
             smcLog("smolFanHelper: Failed to read %@ for write", key)
             return false
@@ -915,13 +915,13 @@ class SMCAccess {
         let success = writeKey(key, dataSize: val.dataSize, dataType: val.dataType,
                                bytes: bytes)
 
-        // Verifica se la scrittura ha avuto effetto
+        // Verify if the write took effect
         if success {
             if let newVal = readKey(key) {
                 let newRPM = bytesToRPM(newVal.bytes, dataType: newVal.dataType)
                 smcLog("smolFanHelper: %@ after write: %d RPM (wanted %d)", key, newRPM, rpm)
 
-                // Tollera differenze minime (< 50 RPM) dovute ad arrotondamenti
+                // Tolerate minor differences (< 50 RPM) dovute ad arrotondamenti
                 let tolerance = 50
                 if abs(newRPM - rpm) > tolerance {
                     smcLog("smolFanHelper: WARNING: %@ write was ignored by SMC", key)
@@ -954,11 +954,11 @@ class SMCAccess {
         return success
     }
 
-    /// Debug: Prova a leggere varie chiavi fan per trovare quelle che funzionano su Apple Silicon
+    /// Debug: Try to read various fan keys to find those that work on Apple Silicon
     func debugEnumerateFanKeys(index: Int) {
         smcLog("smolFanHelper: === Enumerating fan keys for fan %d ===", index)
 
-        // Chiavi comuni per fan
+        // Common fan keys
         let keys = [
             "F\(index)Ac", // Actual RPM
             "F\(index)Mn", // Minimum RPM
@@ -990,7 +990,7 @@ class SMCAccess {
             }
         }
 
-        // Prova anche chiavi globali
+        // Also try global keys
         let globalKeys = ["FS! ", "FS!!", "FSCL", "FMod", "FsSm", "FSct"]
         for key in globalKeys {
             if let val = readKey(key) {
@@ -1003,7 +1003,7 @@ class SMCAccess {
         smcLog("smolFanHelper: === End fan key enumeration ===")
     }
 
-    /// Conta il numero totale di chiavi SMC disponibili
+    /// Counts the total number of available SMC keys
     func getKeyCount() -> Int {
         guard let val = readKey("#KEY") else {
             smcLog("smolFanHelper: Failed to read #KEY (key count)")
@@ -1016,7 +1016,7 @@ class SMCAccess {
         return count
     }
 
-    /// Legge il nome della chiave all'indice dato
+    /// Reads the key name at the given index
     func getKeyAtIndex(_ index: Int) -> String? {
         guard isConnected else { return nil }
 
@@ -1033,7 +1033,7 @@ class SMCAccess {
         return keyToString(output.key)
     }
 
-    /// Debug: cerca chiavi che iniziano con "F" (fan-related)
+    /// Debug: search for keys starting with "F" (fan-related)
     func debugSearchFanKeys() {
         smcLog("smolFanHelper: === Searching for all fan keys (F*) ===")
 
@@ -1045,9 +1045,9 @@ class SMCAccess {
 
         var fanKeys: [String] = []
 
-        // Nota: l'enumerazione di tutte le chiavi richiede getKeyAtIndex
-        // che potrebbe non essere supportato su tutti i device
-        // Proviamo solo le prime 200 chiavi per velocità
+        // Note: enumerating all keys requires getKeyAtIndex
+        // which may not be supported on all devices
+        // Try only the first 200 keys for speed
         let maxToCheck = min(keyCount, 1000)
 
         for i in 0..<maxToCheck {
@@ -1065,7 +1065,7 @@ class SMCAccess {
 
     // MARK: - Low-level SMC Operations
 
-    /// Legge una chiave SMC (prima ottiene keyInfo, poi legge bytes)
+    /// Reads an SMC key (first gets keyInfo, then reads bytes)
     private func readKey(_ key: String) -> SMCValue? {
         guard isConnected else { return nil }
 
@@ -1102,14 +1102,14 @@ class SMCAccess {
         )
     }
 
-    /// Scrive una chiave SMC (versione legacy con 2 bytes)
+    /// Writes an SMC key (legacy version with 2 bytes)
     private func writeKey(_ key: String, dataSize: UInt32, dataType: UInt32,
                           byte0: UInt8, byte1: UInt8 = 0) -> Bool {
         return writeKey(key, dataSize: dataSize, dataType: dataType,
                         bytes: (byte0, byte1, 0, 0))
     }
 
-    /// Scrive una chiave SMC (versione con 4 bytes per supportare flt)
+    /// Writes an SMC key (version with 4 bytes to support flt)
     private func writeKey(_ key: String, dataSize: UInt32, dataType: UInt32,
                           bytes: (UInt8, UInt8, UInt8, UInt8)) -> Bool {
         guard isConnected else { return false }
@@ -1132,7 +1132,7 @@ class SMCAccess {
         return callSMC(input: &input, output: &output)
     }
 
-    /// Ottiene informazioni su una chiave SMC (con cache)
+    /// Gets information about an SMC key (with cache)
     private func getKeyInfo(_ keyCode: UInt32) -> SMCKeyInfoData? {
         // Check cache first
         if let cached = keyInfoCache[keyCode] {
@@ -1158,12 +1158,12 @@ class SMCAccess {
         return keyInfo
     }
 
-    /// Chiama IOConnectCallStructMethod per comunicare con SMC
+    /// Calls IOConnectCallStructMethod to communicate with SMC
     private func callSMC(input: inout SMCKeyData, output: inout SMCKeyData) -> Bool {
         let inputSize = MemoryLayout<SMCKeyData>.stride
         var outputSize = MemoryLayout<SMCKeyData>.stride
 
-        // Verifica che la struct sia 80 bytes come richiesto da AppleSMC
+        // Verify that the struct is 80 bytes as required by AppleSMC
         assert(inputSize == 80, "SMCKeyData must be 80 bytes, got \(inputSize)")
 
         let result = IOConnectCallStructMethod(
@@ -1195,14 +1195,14 @@ class SMCAccess {
 
     // MARK: - Type Conversions
 
-    /// Converte fpe2 (fixed point 14.2) a Int
+    /// Converts fpe2 (fixed point 14.2) to Int
     private func fpe2ToInt(_ byte0: UInt8, _ byte1: UInt8) -> Int {
         // FPE2: 14 bit integer part, 2 bit fractional part
         // Value = (byte0 << 6) + (byte1 >> 2)
         return (Int(byte0) << 6) + (Int(byte1) >> 2)
     }
 
-    /// Converte Int a fpe2
+    /// Converts Int to fpe2
     private func intToFPE2(_ value: Int) -> (UInt8, UInt8) {
         // Reverse of fpe2ToInt
         let byte0 = UInt8(value >> 6)
@@ -1210,14 +1210,14 @@ class SMCAccess {
         return (byte0, byte1)
     }
 
-    /// Converte 4 bytes (little-endian) a Float IEEE 754
+    /// Converts 4 bytes (little-endian) to Float IEEE 754
     private func bytesToFloat(_ b0: UInt8, _ b1: UInt8, _ b2: UInt8, _ b3: UInt8) -> Float {
         // Little-endian: b0 is LSB, b3 is MSB
         let bits: UInt32 = UInt32(b0) | (UInt32(b1) << 8) | (UInt32(b2) << 16) | (UInt32(b3) << 24)
         return Float(bitPattern: bits)
     }
 
-    /// Converte Float a 4 bytes (little-endian)
+    /// Converts Float to 4 bytes (little-endian)
     private func floatToBytes(_ value: Float) -> (UInt8, UInt8, UInt8, UInt8) {
         let bits = value.bitPattern
         return (
@@ -1228,7 +1228,7 @@ class SMCAccess {
         )
     }
 
-    /// Converte bytes SMC a RPM in base al tipo di dato
+    /// Converts SMC bytes to RPM based on data type
     private func bytesToRPM(_ bytes: SMCBytes, dataType: UInt32) -> Int {
         let typeStr = fourCharToString(dataType)
 
@@ -1243,13 +1243,13 @@ class SMCAccess {
             return fpe2ToInt(bytes.0, bytes.1)
 
         default:
-            // Prova fpe2 come default
+            // Try fpe2 as default
             smcLog("smolFanHelper: Unknown RPM type '%@', trying fpe2", typeStr)
             return fpe2ToInt(bytes.0, bytes.1)
         }
     }
 
-    /// Converte RPM a bytes SMC in base al tipo di dato
+    /// Converts RPM to SMC bytes based on data type
     private func rpmToBytes(_ rpm: Int, dataType: UInt32) -> (UInt8, UInt8, UInt8, UInt8) {
         let typeStr = fourCharToString(dataType)
 
@@ -1270,7 +1270,7 @@ class SMCAccess {
         }
     }
 
-    /// Converte stringa di 4 caratteri in UInt32 (FourCC)
+    /// Converts 4-character string to UInt32 (FourCC)
     private func fourCharCode(_ str: String) -> UInt32 {
         var result: UInt32 = 0
         let bytes = Array(str.utf8)
@@ -1279,7 +1279,7 @@ class SMCAccess {
             result = result << 8 | UInt32(bytes[i])
         }
 
-        // Pad con spazi se meno di 4 caratteri
+        // Pad with spaces if less than 4 characters
         for _ in bytes.count..<4 {
             result = result << 8 | UInt32(0x20) // space
         }
@@ -1287,7 +1287,7 @@ class SMCAccess {
         return result
     }
 
-    /// Converte UInt32 FourCC in stringa
+    /// Converts UInt32 FourCC to string
     private func keyToString(_ key: UInt32) -> String {
         var chars: [Character] = []
         chars.append(Character(UnicodeScalar((key >> 24) & 0xff)!))
@@ -1297,7 +1297,7 @@ class SMCAccess {
         return String(chars)
     }
 
-    /// Converte UInt32 dataType in stringa per debug
+    /// Converts UInt32 dataType to string for debug
     private func fourCharToString(_ val: UInt32) -> String {
         return keyToString(val)
     }
@@ -1494,18 +1494,18 @@ class SMCAccess {
 
 // MARK: - SMC Data Structures
 
-/// Valore letto da SMC
+/// Value read from SMC
 private struct SMCValue {
     var dataSize: UInt32
     var dataType: UInt32
     var bytes: SMCBytes
 }
 
-/// Struttura dati per comunicazione con SMC via IOKit
-/// Copia esatta dalla definizione in SMCKit che funziona
-/// IMPORTANTE: Deve essere esattamente 80 bytes per funzionare con AppleSMC
+/// Data structure for communication with SMC via IOKit
+/// Exact copy from the SMCKit definition that works
+/// IMPORTANT: Must be exactly 80 bytes to work with AppleSMC
 private struct SMCKeyData {
-    /// FourCharCode che indica quale chiave vogliamo
+    /// FourCharCode indicating which key we want
     var key: UInt32 = 0
 
     var vers = SMCVersion()
@@ -1514,10 +1514,10 @@ private struct SMCKeyData {
 
     var keyInfo = SMCKeyInfoData()
 
-    /// Padding per allineamento struct quando passata a C
+    /// Padding for struct alignment when passed to C
     var padding: UInt16 = 0
 
-    /// Risultato dell'operazione
+    /// Operation result
     var result: UInt8 = 0
 
     var status: UInt8 = 0
@@ -1527,7 +1527,7 @@ private struct SMCKeyData {
 
     var data32: UInt32 = 0
 
-    /// Dati ritornati dallo SMC
+    /// Data returned by SMC
     var bytes: SMCBytes = (UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
                            UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
                            UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
@@ -1553,10 +1553,10 @@ private struct SMCPLimitData {
 }
 
 private struct SMCKeyInfoData {
-    /// Quanti bytes scritti in SMCKeyData.bytes
+    /// How many bytes written in SMCKeyData.bytes
     var dataSize: UInt32 = 0
 
-    /// Tipo di dato scritto in SMCKeyData.bytes
+    /// Data type written in SMCKeyData.bytes
     var dataType: UInt32 = 0
 
     var dataAttributes: UInt8 = 0

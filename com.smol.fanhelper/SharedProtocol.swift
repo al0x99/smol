@@ -1,44 +1,44 @@
 import Foundation
 
-/// Protocollo XPC condiviso tra app principale e helper privilegiato
-/// Questo file deve essere incluso in entrambi i target
+/// XPC protocol shared between main app and privileged helper
+/// This file must be included in both targets
 @objc public protocol FanHelperProtocol {
-    /// Verifica che l'helper sia raggiungibile (ritorna true se connesso)
+    /// Verify that the helper is reachable (returns true if connected)
     func ping(reply: @escaping (Bool) -> Void)
 
-    /// Ottiene il numero di ventole nel sistema
+    /// Gets the number of fans in the system
     func getFanCount(reply: @escaping (Int) -> Void)
 
-    /// Ottiene RPM attuale di una ventola specifica
+    /// Gets the current RPM of a specific fan
     func getFanRPM(index: Int, reply: @escaping (Int) -> Void)
 
-    /// Ottiene tutte le info ventole in un dizionario
-    /// Chiavi: count, fan0_rpm, fan0_min, fan0_max, fan0_target, fan1_rpm, etc.
+    /// Gets all fan info in a dictionary
+    /// Keys: count, fan0_rpm, fan0_min, fan0_max, fan0_target, fan1_rpm, etc.
     func getFanInfo(reply: @escaping ([String: Any]) -> Void)
 
-    /// Imposta RPM target per una ventola (abilita anche force mode)
+    /// Sets target RPM for a fan (also enables force mode)
     func setFanRPM(index: Int, rpm: Int, reply: @escaping (Bool) -> Void)
 
-    /// Imposta modalità ventole: 0 = auto, 1 = manual/forced
+    /// Sets fan mode: 0 = auto, 1 = manual/forced
     func setFanMode(mode: Int, reply: @escaping (Bool) -> Void)
 
-    /// Debug: enumera tutte le chiavi SMC disponibili per le ventole
+    /// Debug: enumerates all available SMC keys for fans
     func debugEnumerateKeys(reply: @escaping (String) -> Void)
 
-    /// Verifica se il controllo ventole è attualmente disponibile
-    /// Su Apple Silicon M4, quando le temperature sono basse l'hardware disabilita le ventole
-    /// e il controllo manuale non è possibile finché non si riscaldano
+    /// Checks if fan control is currently available
+    /// On Apple Silicon M4, when temperatures are low the hardware disables fans
+    /// and manual control is not possible until they warm up
     func isFanControlAvailable(reply: @escaping (Bool, String) -> Void)
 
-    /// Esegue test esaustivi delle sequenze FOFC per trovare quella che funziona su M4
+    /// Runs exhaustive FOFC sequence tests to find the one that works on M4
     func testFOFCSequences(index: Int, targetRPM: Int, reply: @escaping (Bool, String) -> Void)
 
-    /// Cerca tutte le chiavi FOFC-related disponibili
+    /// Searches all available FOFC-related keys
     func searchFOFCKeys(reply: @escaping (String) -> Void)
 
     /// Test alternative fan control methods (F0Mn/F0Mx constraints)
     func testAlternativeControl(index: Int, targetRPM: Int, reply: @escaping (String) -> Void)
 }
 
-/// Identificatore del servizio Mach per la connessione XPC
+/// Mach service identifier for XPC connection
 public let FanHelperMachServiceName = "com.smol.fanhelper"

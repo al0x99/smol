@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-/// Orchestratore principale del monitoraggio sistema
+/// Main system monitoring orchestrator
 @MainActor
 class SystemMonitor: ObservableObject {
     // MARK: - Published Properties
@@ -60,14 +60,14 @@ class SystemMonitor: ObservableObject {
     // MARK: - Public Methods
 
     func startMonitoring() {
-        // Aggiorna ogni 2 secondi
+        // Update every 2 seconds
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor [weak self] in
                 self?.updateMetrics()
             }
         }
-        // Prima lettura immediata
+        // Immediate first reading
         updateMetrics()
     }
 
@@ -78,7 +78,7 @@ class SystemMonitor: ObservableObject {
 
     func terminateProcess(_ process: ProcessInfo) {
         kill(process.id, SIGTERM)
-        // Rimuovi dalla lista
+        // Remove from list
         suspiciousProcesses.removeAll { $0.id == process.id }
     }
 
@@ -91,12 +91,12 @@ class SystemMonitor: ObservableObject {
         fanMonitor.setFanRPM(index: index, rpm: rpm)
     }
 
-    /// Verifica se l'helper privilegiato deve essere installato
+    /// Check if the privileged helper needs to be installed
     var needsHelperInstallation: Bool {
         fanMonitor.needsHelperInstallation
     }
 
-    /// Installa l'helper privilegiato (richiede password admin)
+    /// Install the privileged helper (requires admin password)
     @discardableResult
     func installFanHelper() -> Bool {
         fanMonitor.installHelper()
@@ -113,29 +113,29 @@ class SystemMonitor: ObservableObject {
 
         // Temperature
         let newTemp = temperatureMonitor.getCPUTemperature()
-        // Calcola trend confrontando con la temperatura precedente
-        if previousTemperature > 0 {  // Evita confronto con 0 iniziale
+        // Calculate trend by comparing with previous temperature
+        if previousTemperature > 0 {  // Avoid comparison with initial 0
             temperatureTrend = newTemp > previousTemperature + 2 ? .rising :
                               newTemp < previousTemperature - 2 ? .falling : .stable
         }
-        previousTemperature = newTemp  // Salva il valore corrente per il prossimo ciclo
+        previousTemperature = newTemp  // Save current value for the next cycle
         temperature = newTemp
 
-        // Processi sospetti
+        // Suspicious processes
         suspiciousProcesses = processAnalyzer.findSuspiciousProcesses()
 
-        // Ventole
+        // Fans
         fans = fanMonitor.getAllFans()
 
-        // Calcola salute complessiva
+        // Calculate overall health
         health = calculateHealth()
 
-        // Genera alert se necessario
+        // Generate alerts if necessary
         checkForNewAlerts()
     }
 
     private func calculateHealth() -> SystemHealth {
-        // Critico: swap alto o memory pressure critica
+        // Critical: high swap or critical memory pressure
         if memoryInfo.swapUsed > 1_000_000_000 { // > 1GB swap
             return .critical(reason: "Swap elevato: \(ByteCountFormatter.string(fromByteCount: Int64(memoryInfo.swapUsed), countStyle: .memory))")
         }
@@ -148,7 +148,7 @@ class SystemMonitor: ObservableObject {
             return .critical(reason: "Temperatura alta a riposo: \(Int(temperature))°C")
         }
 
-        // Warning: swap presente, pressure media, o processi anomali
+        // Warning: swap present, medium pressure, or anomalous processes
         if memoryInfo.swapUsed > 0 {
             return .warning(reason: "Swap in uso")
         }
@@ -170,7 +170,7 @@ class SystemMonitor: ObservableObject {
 
     private func checkForNewAlerts() {
         for process in suspiciousProcesses {
-            // Evita duplicati
+            // Avoid duplicates
             if !alerts.contains(where: { $0.process.id == process.id }) {
                 let alert = ProcessAlert(
                     process: process,
@@ -179,7 +179,7 @@ class SystemMonitor: ObservableObject {
                 )
                 alerts.append(alert)
 
-                // Notifica sistema
+                // System notification
                 sendNotification(for: alert)
             }
         }

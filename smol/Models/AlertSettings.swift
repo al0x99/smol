@@ -2,34 +2,34 @@ import Foundation
 import SwiftUI
 import Combine
 
-/// Impostazioni configurabili per il rilevamento di processi sospetti
+/// Configurable settings for suspicious process detection
 class AlertSettings: ObservableObject {
-    /// Singleton per accesso globale
+    /// Singleton for global access
     static let shared = AlertSettings()
 
     // MARK: - Threshold Settings
 
-    /// Soglia CPU % oltre la quale un processo è considerato ad alto consumo
+    /// CPU % threshold above which a process is considered high consumption
     /// Default: 30%
     @AppStorage("alertCPUThreshold") var cpuThreshold: Double = 30 {
         didSet { objectWillChange.send() }
     }
 
-    /// Minuti minimi di esecuzione prima di considerare un processo
-    /// Default: 10 minuti
+    /// Minimum running minutes before considering a process
+    /// Default: 10 minutes
     @AppStorage("alertMinRunningMinutes") var minRunningMinutes: Double = 10 {
         didSet { objectWillChange.send() }
     }
 
-    /// Minuti di CPU time accumulato oltre i quali un processo è sospetto
-    /// Default: 5 minuti
+    /// Accumulated CPU time minutes above which a process is suspicious
+    /// Default: 5 minutes
     @AppStorage("alertCPUTimeThreshold") var cpuTimeThreshold: Double = 5 {
         didSet { objectWillChange.send() }
     }
 
     // MARK: - Tips
 
-    /// Consiglio per la soglia CPU
+    /// Tip for CPU threshold
     static let cpuThresholdTip = """
     Quanto CPU deve usare un processo per essere considerato "alto".
 
@@ -40,7 +40,7 @@ class AlertSettings: ObservableObject {
     Processi come browser o IDE possono usare 20-40% normalmente.
     """
 
-    /// Consiglio per il tempo minimo di esecuzione
+    /// Tip for minimum running time
     static let minRunningTip = """
     Quanto tempo deve girare un processo prima di analizzarlo.
 
@@ -51,7 +51,7 @@ class AlertSettings: ObservableObject {
     Valori bassi possono generare falsi positivi per processi temporanei.
     """
 
-    /// Consiglio per la soglia CPU time
+    /// Tip for CPU threshold time
     static let cpuTimeTip = """
     Quanti minuti di lavoro CPU effettivo deve accumulare un processo.
 
@@ -101,14 +101,14 @@ class AlertSettings: ObservableObject {
         )
     ]
 
-    /// Applica un preset
+    /// Apply a preset
     func applyPreset(_ preset: Preset) {
         cpuThreshold = preset.cpuThreshold
         minRunningMinutes = preset.minRunningMinutes
         cpuTimeThreshold = preset.cpuTimeThreshold
     }
 
-    /// Ripristina valori di default
+    /// Reset to default values
     func resetToDefaults() {
         cpuThreshold = 30
         minRunningMinutes = 10

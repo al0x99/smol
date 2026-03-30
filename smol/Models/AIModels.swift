@@ -2,13 +2,13 @@ import Foundation
 
 // MARK: - AI Models
 
-/// Punto dati con timestamp per analisi storica
+/// Data point with timestamp for historical analysis
 struct AIDataPoint {
     let timestamp: Date
     let value: Double
 }
 
-/// Consiglio generato dall'AI
+/// AI-generated advice
 struct AIAdvice: Identifiable {
     let id = UUID()
     let type: AdviceType
@@ -69,7 +69,7 @@ struct AIAdvice: Identifiable {
     }
 }
 
-/// Anomalia rilevata dal sistema
+/// System-detected anomaly
 struct AIAnomaly: Identifiable {
     let id = UUID()
     let type: AnomalyType
@@ -103,7 +103,7 @@ struct AIAnomaly: Identifiable {
     }
 }
 
-/// Report generato sul sistema
+/// Generated system report
 struct SystemReport: Identifiable {
     let id = UUID()
     let generatedAt: Date
@@ -130,7 +130,7 @@ struct SystemReport: Identifiable {
     }
 }
 
-/// Conversazione con l'assistente AI
+/// Conversation with the AI assistant
 struct AIConversation: Identifiable {
     let id = UUID()
     var messages: [Message]
@@ -140,7 +140,7 @@ struct AIConversation: Identifiable {
         let role: Role
         let content: String
         let timestamp: Date
-        var resourceCost: ResourceTracker.ResourceCost?  // Costo risorse per risposte AI
+        var resourceCost: ResourceTracker.ResourceCost?  // Resource cost for AI responses
 
         enum Role {
             case user

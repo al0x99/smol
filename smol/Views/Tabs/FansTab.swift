@@ -21,7 +21,7 @@ struct FansTab: View {
         }
     }
 
-    /// Verifica se tutte le ventole sono a 0 RPM
+    /// Check if all fans are at 0 RPM
     private var allFansOff: Bool {
         !monitor.fans.isEmpty && monitor.fans.allSatisfy { $0.currentRPM == 0 }
     }
@@ -36,12 +36,12 @@ struct FansTab: View {
                         description: Text("fans.no_fans_desc".localized(localization))
                     )
                 } else {
-                    // Avviso ventole spente (Apple Silicon)
+                    // Warning: fans off (Apple Silicon)
                     if allFansOff {
                         FansOffWarningView()
                     }
 
-                    // Controlli modalità
+                    // Mode controls
                     GroupBox {
                         VStack(alignment: .leading, spacing: 12) {
                             Picker("fans.mode".localized(localization), selection: $selectedMode) {
@@ -63,7 +63,7 @@ struct FansTab: View {
                         Label("fans.control_mode".localized(localization), systemImage: "slider.horizontal.3")
                     }
 
-                    // Lista ventole
+                    // Fan list
                     GroupBox {
                         VStack(spacing: 16) {
                             ForEach(monitor.fans) { fan in
@@ -186,7 +186,7 @@ struct FanDetailRow: View {
     }
 }
 
-/// Info quando le ventole sono spente (Apple Silicon) - controlli comunque disponibili
+/// Info when fans are off (Apple Silicon) - controls still available
 struct FansOffWarningView: View {
     @StateObject private var localization = LocalizationManager.shared
     @State private var isExpanded = false
@@ -260,7 +260,7 @@ struct FansOffWarningView: View {
                             .foregroundColor(.secondary)
                     }
 
-                    // Stato attuale
+                    // Current state
                     HStack {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.green)

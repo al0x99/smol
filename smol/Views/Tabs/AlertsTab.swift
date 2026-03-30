@@ -39,7 +39,7 @@ struct AlertsTab: View {
             Divider()
 
             if showSettings {
-                // Sezione impostazioni
+                // Settings section
                 AlertSettingsView(settings: settings)
                     .transition(.move(edge: .top).combined(with: .opacity))
 
@@ -72,7 +72,7 @@ struct AlertsTab: View {
                             .multilineTextAlignment(.center)
                     }
 
-                    // Info card con soglie attuali
+                    // Info card with current thresholds
                     VStack(alignment: .leading, spacing: 12) {
                         Label("alerts.what_monitors".localized(localization), systemImage: "info.circle")
                             .font(.headline)
@@ -94,7 +94,7 @@ struct AlertsTab: View {
                     Spacer()
                 }
             } else {
-                // Lista alert migliorata
+                // Improved alert list
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(monitor.alerts) { alert in
@@ -151,7 +151,7 @@ struct AlertSettingsView: View {
                     expandedTip: $expandedTip
                 )
 
-                // Tempo minimo esecuzione
+                // Minimum running time
                 ThresholdSlider(
                     title: "alerts.min_running_time".localized(localization),
                     value: $settings.minRunningMinutes,
@@ -393,7 +393,7 @@ struct EnhancedAlertRow: View {
     }
 }
 
-/// Pill per statistiche compatte
+/// Pill for compact statistics
 struct StatPill: View {
     let icon: String
     let value: String

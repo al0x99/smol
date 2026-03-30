@@ -2,8 +2,9 @@ import SwiftUI
 import Charts
 import Combine
 import UniformTypeIdentifiers
+import os
 
-/// Tab Assistente AI - interfaccia conversazionale e insights
+/// AI Assistant tab - conversational interface and insights
 struct AIAssistantTab: View {
     @ObservedObject var monitor: SystemMonitor
     @StateObject private var advisor = SmartAdvisor.shared
@@ -29,12 +30,12 @@ struct AIAssistantTab: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header con selector sezione
+            // Header with section selector
             AIHeaderView(selectedSection: $selectedSection)
 
             Divider()
 
-            // Contenuto basato sulla sezione selezionata
+            // Content based on selected section
             switch selectedSection {
             case .chat:
                 AIChatSection(
@@ -126,12 +127,12 @@ struct AIChatSection: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        // Welcome message se conversazione vuota
+                        // Welcome message if conversation is empty
                         if advisor.conversation.messages.isEmpty {
                             WelcomeMessageView()
                         }
 
-                        // Messaggi
+                        // Messages
                         ForEach(advisor.conversation.messages) { message in
                             ChatBubble(message: message, resourceCost: message.resourceCost)
                                 .id(message.id)
@@ -194,7 +195,7 @@ struct WelcomeMessageView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
 
-            // Suggerimenti
+            // Suggestions
             VStack(alignment: .leading, spacing: 8) {
                 Text("Esempi di domande:")
                     .font(.caption)
@@ -269,7 +270,7 @@ struct ChatBubble: View {
                     )
                     .foregroundColor(message.role == .user ? .white : .primary)
 
-                // Mostra costo risorse per risposte AI
+                // Show resource cost for AI responses
                 if message.role == .assistant, let cost = resourceCost {
                     ResourceCostBadge(cost: cost)
                 }
@@ -428,7 +429,7 @@ struct AIInsightsSection: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Stato analisi
+                // Analysis state
                 if advisor.isAnalyzing {
                     HStack {
                         ProgressView()
@@ -440,12 +441,12 @@ struct AIInsightsSection: View {
                     .padding()
                 }
 
-                // Anomalie
+                // Anomalies
                 if !advisor.anomalies.isEmpty {
                     AnomaliesCard(anomalies: advisor.anomalies)
                 }
 
-                // Consigli per severità
+                // Advice by severity
                 if !advisor.currentAdvice.isEmpty {
                     AdviceListView(advice: advisor.currentAdvice)
                 } else {
@@ -676,20 +677,18 @@ struct ActionButton: View {
 
     private func performAction() {
         switch action {
-        case .terminateProcess(let pid, _):
-            kill(pid, SIGTERM)
+        case .terminateProcess(let pid, let name):
+            let result = kill(pid, SIGTERM)
+            if result != 0 {
+                SmolLog.general.warning("Failed to terminate \(name, privacy: .public) (PID \(pid)): errno \(errno)")
+            } else {
+                SmolLog.general.info("Sent SIGTERM to \(name, privacy: .public) (PID \(pid))")
+            }
         case .openActivityMonitor:
             if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.ActivityMonitor") {
                 NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
             }
-        case .clearCache:
-            // Placeholder
-            break
-        case .restartApp(let name):
-            // Placeholder
-            _ = name
-            break
-        case .none:
+        case .clearCache, .restartApp, .none:
             break
         }
     }
@@ -733,12 +732,12 @@ struct AIReportSection: View {
                     // Health score
                     HealthScoreView(score: report.healthScore)
 
-                    // Sezioni
+                    // Sections
                     ForEach(report.sections) { section in
                         ReportSectionView(section: section)
                     }
 
-                    // Raccomandazioni
+                    // Recommendations
                     RecommendationsView(recommendations: report.recommendations)
 
                     // Export button
@@ -751,7 +750,7 @@ struct AIReportSection: View {
                     .padding(.top)
 
                 } else {
-                    // Genera report
+                    // Generate report
                     VStack(spacing: 16) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.system(size: 48))
@@ -814,7 +813,7 @@ struct ReportHeaderView: View {
             Spacer()
 
             Button {
-                // Rigenera
+                // Regenerate
             } label: {
                 Image(systemName: "arrow.clockwise")
             }

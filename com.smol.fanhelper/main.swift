@@ -3,7 +3,7 @@ import Security
 
 // MARK: - Fan Helper Service
 
-/// Implementazione del servizio XPC per controllo ventole
+/// XPC service implementation for fan control
 class FanHelperService: NSObject, FanHelperProtocol {
     private let smc = SMCAccess()
 
@@ -44,7 +44,7 @@ class FanHelperService: NSObject, FanHelperProtocol {
         logToFile("setFanRPM called: index=\(index), rpm=\(rpm)")
         NSLog("smolFanHelper: setFanRPM(%d, %d)", index, rpm)
 
-        // Prova ad abilitare force mode (potrebbe fallire su Apple Silicon)
+        // Try to enable force mode (may fail on Apple Silicon)
         logToFile("Calling setFanForceMode...")
         let forceOK = smc.setFanForceMode(index: index, forced: true)
         logToFile("setFanForceMode result: \(forceOK)")
@@ -52,8 +52,8 @@ class FanHelperService: NSObject, FanHelperProtocol {
             NSLog("smolFanHelper: Force mode failed for fan %d, trying direct target write anyway", index)
         }
 
-        // Prova comunque a impostare RPM target
-        // Su Apple Silicon potrebbe funzionare anche senza force mode
+        // Try to set target RPM anyway
+        // On Apple Silicon it may work even without force mode
         logToFile("Calling setFanTargetRPM...")
         let setOK = smc.setFanTargetRPM(index: index, rpm: rpm)
         logToFile("setFanTargetRPM result: \(setOK)")
@@ -86,7 +86,7 @@ class FanHelperService: NSObject, FanHelperProtocol {
     func setFanMode(mode: Int, reply: @escaping (Bool) -> Void) {
         NSLog("smolFanHelper: setFanMode(%d)", mode)
 
-        // mode 0 = auto (disabilita force), mode 1+ = manual
+        // mode 0 = auto (disable force), mode 1+ = manual
         let count = smc.getFanCount()
         var allOK = true
 
@@ -102,13 +102,13 @@ class FanHelperService: NSObject, FanHelperProtocol {
     func debugEnumerateKeys(reply: @escaping (String) -> Void) {
         NSLog("smolFanHelper: debugEnumerateKeys() - starting enumeration")
 
-        // Enumera chiavi per ogni ventola
+        // Enumerate keys for each fan
         let count = smc.getFanCount()
         for i in 0..<count {
             smc.debugEnumerateFanKeys(index: i)
         }
 
-        // Cerca tutte le chiavi F*
+        // Search all F* keys
         smc.debugSearchFanKeys()
 
         reply("Check /tmp/smol_helper_debug.log for results")
@@ -123,8 +123,8 @@ class FanHelperService: NSObject, FanHelperProtocol {
             return
         }
 
-        // Su Apple Silicon M4, quando le ventole sono a 0 RPM,
-        // l'hardware le ha disabilitate e non è possibile controllarle
+        // On Apple Silicon M4, when fans are at 0 RPM,
+        // the hardware has disabled them and control is not possible
         var anyFanRunning = false
         for i in 0..<count {
             let rpm = smc.getFanRPM(index: i)
@@ -140,15 +140,15 @@ class FanHelperService: NSObject, FanHelperProtocol {
             return
         }
 
-        // Prova a scrivere un valore per vedere se il controllo è accettato
+        // Try writing a value to see if control is accepted
         let testResult = smc.setFanForceMode(index: 0, forced: true)
-        // Ripristina subito
+        // Restore immediately
         _ = smc.setFanForceMode(index: 0, forced: false)
 
         if testResult {
             reply(true, "Fan control disponibile")
         } else {
-            // SMC ha rifiutato la scrittura - controllo non disponibile
+            // SMC rejected the write - control not available
             reply(false, "Il controllo delle ventole non è disponibile su questo Mac. L'hardware Apple Silicon protegge l'accesso SMC in scrittura.")
         }
     }
@@ -189,14 +189,14 @@ class FanHelperService: NSObject, FanHelperProtocol {
 
 // MARK: - XPC Listener Delegate
 
-/// Delegato per gestire connessioni XPC in arrivo
+/// Delegate to handle incoming XPC connections
 class FanHelperDelegate: NSObject, NSXPCListenerDelegate {
 
     func listener(_ listener: NSXPCListener,
                   shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
         NSLog("smolFanHelper: New connection request from PID %d", newConnection.processIdentifier)
 
-        // Verifica firma del client (IMPORTANTE per sicurezza!)
+        // Verify client signature (IMPORTANT for security!)
         guard verifyClientSignature(connection: newConnection) else {
             NSLog("smolFanHelper: Client verification FAILED for PID %d", newConnection.processIdentifier)
             return false
@@ -204,16 +204,16 @@ class FanHelperDelegate: NSObject, NSXPCListenerDelegate {
 
         NSLog("smolFanHelper: Client verified, accepting connection")
 
-        // Configura interfaccia XPC
+        // Configure XPC interface
         newConnection.exportedInterface = NSXPCInterface(with: FanHelperProtocol.self)
         newConnection.exportedObject = FanHelperService()
 
-        // Handler per interruzione connessione
+        // Handler for connection interruption
         newConnection.interruptionHandler = {
             NSLog("smolFanHelper: Connection interrupted")
         }
 
-        // Handler per invalidazione connessione
+        // Handler for connection invalidation
         newConnection.invalidationHandler = {
             NSLog("smolFanHelper: Connection invalidated")
         }
@@ -222,10 +222,10 @@ class FanHelperDelegate: NSObject, NSXPCListenerDelegate {
         return true
     }
 
-    /// Verifica che il client sia firmato con lo stesso Team ID
+    /// Verify that the client is signed with the same Team ID
     private func verifyClientSignature(connection: NSXPCConnection) -> Bool {
         #if DEBUG
-        // In debug, accetta tutte le connessioni per facilitare sviluppo
+        // In debug, accept all connections to facilitate development
         NSLog("smolFanHelper: DEBUG mode - accepting all connections")
         return true
         #else
@@ -240,8 +240,8 @@ class FanHelperDelegate: NSObject, NSXPCListenerDelegate {
             return false
         }
 
-        // Verifica che sia firmato con lo stesso Team ID dell'helper
-        // Sostituire JLTQ5V2UX8 con il vero Team ID
+        // Verify it is signed with the same Team ID as the helper
+        // Replace JLTQ5V2UX8 with the actual Team ID
         let requirement = """
             anchor apple generic
             and identifier "com.whitepaper.smol"
@@ -296,14 +296,14 @@ do {
     NSLog("smolFanHelper: Alternative control result: %@", altResult)
 }
 
-// Crea delegato e listener
+// Create delegate and listener
 let delegate = FanHelperDelegate()
 let listener = NSXPCListener(machServiceName: FanHelperMachServiceName)
 listener.delegate = delegate
 
-// Avvia listener
+// Start listener
 listener.resume()
 NSLog("smolFanHelper: Listening on %@", FanHelperMachServiceName)
 
-// Mantieni processo attivo
+// Keep process alive
 RunLoop.current.run()

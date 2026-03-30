@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-/// Gestisce download e storage dei modelli LLM locali
+/// Manages download and storage of local LLM models
 @MainActor
 class ModelManager: ObservableObject {
     static let shared = ModelManager()
@@ -24,8 +24,8 @@ class ModelManager: ObservableObject {
 
     // MARK: - Model Catalog
 
-    /// Modelli disponibili per download
-    /// Usa modelli GGUF compatibili con llama.cpp / MLX
+    /// Available models for download
+    /// Uses GGUF models compatible with llama.cpp / MLX
     static let modelCatalog: [LLMModel] = [
         LLMModel(
             id: "qwen2-0.5b",
@@ -96,7 +96,7 @@ class ModelManager: ObservableObject {
 
     // MARK: - Public API
 
-    /// Scarica un modello
+    /// Download a model
     func downloadModel(_ model: LLMModel) async throws {
         guard !isDownloading else {
             throw ModelError.alreadyDownloading
@@ -114,19 +114,19 @@ class ModelManager: ObservableObject {
         let destinationURL = modelsDirectory.appendingPathComponent("\(model.id).gguf")
 
         do {
-            // Usa URLSession per download con progress
+            // Use URLSession for download with progress
             let (tempURL, _) = try await downloadWithProgress(from: url)
 
-            // Sposta alla destinazione finale
+            // Move to final destination
             if FileManager.default.fileExists(atPath: destinationURL.path) {
                 try FileManager.default.removeItem(at: destinationURL)
             }
             try FileManager.default.moveItem(at: tempURL, to: destinationURL)
 
-            // Aggiorna stato
+            // Update state
             refreshDownloadedModels()
 
-            // Se è il primo modello, impostalo come attivo
+            // If it's the first model, set it as active
             if activeModel == nil {
                 setActiveModel(model)
             }
@@ -143,7 +143,7 @@ class ModelManager: ObservableObject {
         }
     }
 
-    /// Cancella download in corso
+    /// Cancel download in progress
     func cancelDownload() {
         downloadTask?.cancel()
         isDownloading = false
@@ -151,7 +151,7 @@ class ModelManager: ObservableObject {
         downloadProgress = 0
     }
 
-    /// Elimina un modello scaricato
+    /// Delete a downloaded model
     func deleteModel(_ model: LLMModel) throws {
         let modelPath = modelsDirectory.appendingPathComponent("\(model.id).gguf")
 
@@ -167,25 +167,25 @@ class ModelManager: ObservableObject {
         refreshDownloadedModels()
     }
 
-    /// Imposta il modello attivo
+    /// Set the active model
     func setActiveModel(_ model: LLMModel) {
         activeModel = model
         saveActiveModel()
     }
 
-    /// Verifica se un modello è scaricato
+    /// Check if a model is downloaded
     func isModelDownloaded(_ model: LLMModel) -> Bool {
         let modelPath = modelsDirectory.appendingPathComponent("\(model.id).gguf")
         return FileManager.default.fileExists(atPath: modelPath.path)
     }
 
-    /// Percorso del modello scaricato
+    /// Path to the downloaded model
     func modelPath(for model: LLMModel) -> URL? {
         let path = modelsDirectory.appendingPathComponent("\(model.id).gguf")
         return FileManager.default.fileExists(atPath: path.path) ? path : nil
     }
 
-    /// Verifica se il sistema ha risorse sufficienti per un modello
+    /// Check if the system has sufficient resources for a model
     func canRunModel(_ model: LLMModel) -> (canRun: Bool, warning: String?) {
         let totalRAM = Foundation.ProcessInfo.processInfo.physicalMemory
         let totalRAMGB = Double(totalRAM) / 1_073_741_824  // GB
@@ -242,7 +242,7 @@ class ModelManager: ObservableObject {
         downloadedModels = downloaded
         totalStorageUsed = totalSize
 
-        // Aggiorna flag in availableModels
+        // Update flag in availableModels
         for i in 0..<availableModels.count {
             availableModels[i].isDownloaded = downloaded.contains { $0.id == availableModels[i].id }
         }
@@ -278,7 +278,7 @@ private class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
             return
         }
 
-        // Copia in temp perché location viene eliminato
+        // Copy to temp because location gets deleted
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".gguf")
         do {
             try FileManager.default.copyItem(at: location, to: tempURL)

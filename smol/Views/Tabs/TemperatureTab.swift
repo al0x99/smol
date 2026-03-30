@@ -10,26 +10,26 @@ struct TemperatureTab: View {
     @State private var lastUpdate = Date()
     private let temperatureMonitor = TemperatureMonitor.shared
 
-    // Timer per aggiornamento
+    // Timer for updates
     let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Group {
             if sensors.isEmpty {
-                // Nessun sensore disponibile
+                // No sensors available
                 NoSMCAccessView()
             } else {
                 // Sensori disponibili
                 ScrollView {
                     VStack(spacing: 20) {
-                        // Header con stato
+                        // Header with status
                         TemperatureHeader(
                             avgCPUTemp: avgCPUTemperature,
                             maxTemp: maxTemperature,
                             sensorCount: sensors.count
                         )
 
-                        // Sensori per categoria
+                        // Sensors by category
                         ForEach(orderedCategories, id: \.self) { category in
                             if let categorySensors = sensorsByCategory[category], !categorySensors.isEmpty {
                                 TemperatureCategorySection(
@@ -245,7 +245,7 @@ struct TemperatureCategorySection: View {
             }
             .buttonStyle(.plain)
 
-            // Lista sensori
+            // Sensor list
             if isExpanded {
                 VStack(spacing: 0) {
                     ForEach(sensors) { sensor in

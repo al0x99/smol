@@ -1,8 +1,8 @@
 import Foundation
 import IOKit
 
-/// Traccia l'utilizzo risorse durante operazioni AI
-/// Fornisce trasparenza all'utente sul costo computazionale
+/// Tracks resource usage during AI operations
+/// Provides transparency to the user about computational cost
 class ResourceTracker {
     static let shared = ResourceTracker()
 
@@ -10,20 +10,20 @@ class ResourceTracker {
 
     struct ResourceSnapshot {
         let timestamp: Date
-        let cpuUsage: Double          // Percentuale 0-100
+        let cpuUsage: Double          // Percentage 0-100
         let memoryUsed: UInt64        // Bytes
-        let memoryPressure: Double    // Percentuale 0-100
-        let energyImpact: Double      // Stima 0-100
+        let memoryPressure: Double    // Percentage 0-100
+        let energyImpact: Double      // Estimate 0-100
     }
 
     struct ResourceCost: CustomStringConvertible {
         let duration: TimeInterval
         let avgCPU: Double
         let peakCPU: Double
-        let memoryDelta: Int64        // Bytes (può essere negativo)
+        let memoryDelta: Int64        // Bytes (can be negative)
         let peakMemory: UInt64
-        let estimatedEnergy: Double   // mWh stimati
-        let tokenCount: Int?          // Per LLM
+        let estimatedEnergy: Double   // Estimated mWh
+        let tokenCount: Int?          // For LLM
 
         var description: String {
             var parts: [String] = []
@@ -44,7 +44,7 @@ class ResourceTracker {
             return parts.joined(separator: " | ")
         }
 
-        /// Descrizione user-friendly per UI
+        /// User-friendly description for UI
         var userFriendlyDescription: String {
             let impact = impactLevel
             let emoji = impact == .low ? "🟢" : (impact == .medium ? "🟡" : "🔴")
@@ -90,30 +90,25 @@ class ResourceTracker {
 
     // MARK: - Tracking API
 
-    /// Inizia a tracciare le risorse
+    /// Start tracking resources
     func startTracking() {
         samples = []
         tokenCounter = 0
         startSnapshot = takeSnapshot()
 
-        // Campiona ogni 100ms
+        // Sample every 100ms
         samplingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            self?.samples.append(self?.takeSnapshot() ?? ResourceSnapshot(
-                timestamp: Date(),
-                cpuUsage: 0,
-                memoryUsed: 0,
-                memoryPressure: 0,
-                energyImpact: 0
-            ))
+            guard let self else { return }
+            self.samples.append(self.takeSnapshot())
         }
     }
 
-    /// Incrementa contatore token (per LLM)
+    /// Increment token counter (for LLM)
     func addTokens(_ count: Int) {
         tokenCounter += count
     }
 
-    /// Ferma il tracking e restituisce il costo
+    /// Stop tracking and return the cost
     func stopTracking() -> ResourceCost {
         samplingTimer?.invalidate()
         samplingTimer = nil
@@ -134,16 +129,16 @@ class ResourceTracker {
 
         let duration = endSnapshot.timestamp.timeIntervalSince(start.timestamp)
 
-        // Calcola statistiche CPU
+        // Calculate CPU statistics
         let cpuValues = samples.map { $0.cpuUsage }
         let avgCPU = cpuValues.isEmpty ? 0 : cpuValues.reduce(0, +) / Double(cpuValues.count)
         let peakCPU = cpuValues.max() ?? 0
 
-        // Calcola delta memoria
+        // Calculate memory delta
         let memoryDelta = Int64(endSnapshot.memoryUsed) - Int64(start.memoryUsed)
         let peakMemory = samples.map { $0.memoryUsed }.max() ?? endSnapshot.memoryUsed
 
-        // Stima energia (approssimativa)
+        // Estimate energy (approximate)
         // Apple Silicon: ~15W TDP, assumiamo proporzionale a CPU%
         let avgPowerWatts = (avgCPU / 100.0) * 15.0
         let energyWh = (avgPowerWatts * duration) / 3600.0
@@ -162,7 +157,7 @@ class ResourceTracker {
         )
     }
 
-    /// Esegue un'operazione tracciando le risorse
+    /// Execute an operation while tracking resources
     func track<T>(operation: () async throws -> T) async throws -> (result: T, cost: ResourceCost) {
         startTracking()
         do {
@@ -175,7 +170,7 @@ class ResourceTracker {
         }
     }
 
-    /// Versione sincrona
+    /// Synchronous version
     func trackSync<T>(operation: () throws -> T) throws -> (result: T, cost: ResourceCost) {
         startTracking()
         do {
@@ -274,7 +269,7 @@ class ResourceTracker {
     }
 
     private func estimateEnergyImpact() -> Double {
-        // Stima basata su CPU e memoria
+        // Estimate based on CPU and memory
         let cpu = getCurrentCPUUsage()
         let memPressure = getCurrentMemoryPressure()
 
@@ -285,7 +280,7 @@ class ResourceTracker {
 // MARK: - Cost Estimation Helpers
 
 extension ResourceTracker {
-    /// Stima il costo prima di eseguire (per avvisare l'utente)
+    /// Estimate cost before execution (to warn the user)
     struct CostEstimate {
         let estimatedDuration: TimeInterval
         let estimatedCPU: Double
@@ -303,7 +298,7 @@ extension ResourceTracker {
         }
     }
 
-    /// Stima costo per LLM inference
+    /// Estimate cost for LLM inference
     static func estimateLLMCost(inputTokens: Int, modelSize: ModelSize) -> CostEstimate {
         let tokensPerSecond: Double
         let cpuUsage: Double
@@ -328,7 +323,7 @@ extension ResourceTracker {
             memoryMB = 9000
         }
 
-        // Stima output tokens (circa 2x input per risposte)
+        // Estimate output tokens (approx 2x input for responses)
         let estimatedOutputTokens = inputTokens * 2
         let totalTokens = inputTokens + estimatedOutputTokens
         let duration = Double(totalTokens) / tokensPerSecond

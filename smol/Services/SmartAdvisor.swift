@@ -2,8 +2,8 @@ import Foundation
 import Combine
 import NaturalLanguage
 
-/// SmartAdvisor - Assistente AI per analisi sistema
-/// Usa Apple Silicon Neural Engine per ML on-device
+/// SmartAdvisor - AI assistant for system analysis
+/// Uses Apple Silicon Neural Engine for on-device ML
 @MainActor
 class SmartAdvisor: ObservableObject {
     static let shared = SmartAdvisor()
@@ -38,7 +38,7 @@ class SmartAdvisor: ObservableObject {
 
     // MARK: - Public API
 
-    /// Analizza lo stato corrente del sistema e genera consigli
+    /// Analyze the current system state and generate advice
     func analyze(
         cpuUsage: Double,
         memoryPressure: Double,
@@ -50,23 +50,23 @@ class SmartAdvisor: ObservableObject {
     ) {
         isAnalyzing = true
 
-        // Aggiorna storico
+        // Update history
         let now = Date()
         cpuHistory.append(AIDataPoint(timestamp: now, value: cpuUsage))
         memoryHistory.append(AIDataPoint(timestamp: now, value: memoryPressure))
         tempHistory.append(AIDataPoint(timestamp: now, value: temperature))
 
-        // Limita dimensione storico
+        // Limit history size
         trimHistory()
 
-        // Genera consigli
+        // Generate advice
         var newAdvice: [AIAdvice] = []
         var newAnomalies: [AIAnomaly] = []
 
-        // 1. Analisi CPU
+        // 1. CPU analysis
         newAdvice.append(contentsOf: analyzeCPU(usage: cpuUsage, processes: processes))
 
-        // 2. Analisi Memoria
+        // 2. Memory analysis
         newAdvice.append(contentsOf: analyzeMemory(
             pressure: memoryPressure,
             used: memoryUsed,
@@ -74,13 +74,13 @@ class SmartAdvisor: ObservableObject {
             swap: swapUsed
         ))
 
-        // 3. Analisi Temperatura
+        // 3. Temperature analysis
         newAdvice.append(contentsOf: analyzeTemperature(temp: temperature, cpuUsage: cpuUsage))
 
-        // 4. Analisi Processi
+        // 4. Process analysis
         newAdvice.append(contentsOf: analyzeProcesses(processes))
 
-        // 5. Rilevamento Anomalie (pattern-based)
+        // 5. Anomaly detection (pattern-based)
         newAnomalies.append(contentsOf: anomalyDetector.detectAnomalies(
             cpuHistory: cpuHistory,
             memoryHistory: memoryHistory,
@@ -92,19 +92,19 @@ class SmartAdvisor: ObservableObject {
         mlPrediction = prediction
         mlModelTrained = mlEngine.isModelTrained
 
-        // Aggiungi campione per training futuro
-        // Marca come anomalia se rilevata sia da pattern che da ML
+        // Add sample for future training
+        // Mark as anomaly if detected by both pattern and ML
         let isAnomaly = !newAnomalies.isEmpty || prediction.isAnomaly
         mlEngine.addSample(cpu: cpuUsage, memory: memoryPressure, temp: temperature, isAnomaly: isAnomaly)
 
-        // Se ML rileva anomalia, aggiungi ai risultati
+        // If ML detects an anomaly, add to results
         if prediction.isAnomaly && mlEngine.isModelTrained {
             let anomalyType = mapMLAnomalyType(prediction.anomalyType)
             let currentVal: Double
             let expectedRange: ClosedRange<Double>
             let metric: String
 
-            // Determina metrica principale dell'anomalia
+            // Determine main metric of the anomaly
             switch prediction.anomalyType {
             case .cpuSpike:
                 currentVal = cpuUsage
@@ -135,13 +135,13 @@ class SmartAdvisor: ObservableObject {
             ))
         }
 
-        // Aggiorna stato
+        // Update state
         currentAdvice = newAdvice.sorted { $0.severity.sortOrder > $1.severity.sortOrder }
         anomalies = newAnomalies
         isAnalyzing = false
     }
 
-    /// Mappa tipo anomalia ML a tipo sistema
+    /// Map ML anomaly type to system type
     private func mapMLAnomalyType(_ type: MLAnomalyEngine.AnomalyPrediction.AnomalyType?) -> AIAnomaly.AnomalyType {
         switch type {
         case .cpuSpike: return .cpuSpike
@@ -151,17 +151,17 @@ class SmartAdvisor: ObservableObject {
         }
     }
 
-    /// Processa una query in linguaggio naturale
+    /// Process a natural language query
     func processQuery(_ query: String) -> String {
-        // Aggiungi messaggio utente
+        // Add user message
         let userMessage = AIConversation.Message(role: .user, content: query, timestamp: Date())
         conversation.messages.append(userMessage)
 
-        // Traccia risorse durante elaborazione
+        // Track resources during processing
         let tracker = ResourceTracker.shared
         tracker.startTracking()
 
-        // Genera risposta
+        // Generate response
         let response = nlProcessor.processQuery(
             query,
             cpuHistory: cpuHistory,
@@ -171,14 +171,14 @@ class SmartAdvisor: ObservableObject {
             anomalies: anomalies
         )
 
-        // Conta token output approssimati
+        // Approximate output token count
         let outputTokens = response.split(separator: " ").count
         tracker.addTokens(outputTokens)
 
-        // Ferma tracking e ottieni costo
+        // Stop tracking and get cost
         let resourceCost = tracker.stopTracking()
 
-        // Aggiungi risposta assistente con costo risorse
+        // Add assistant response with resource cost
         let assistantMessage = AIConversation.Message(
             role: .assistant,
             content: response,
@@ -190,7 +190,7 @@ class SmartAdvisor: ObservableObject {
         return response
     }
 
-    /// Genera un report completo del sistema
+    /// Generate a comprehensive system report
     func generateReport() -> SystemReport {
         let report = reportGenerator.generate(
             cpuHistory: cpuHistory,
@@ -203,7 +203,7 @@ class SmartAdvisor: ObservableObject {
         return report
     }
 
-    /// Esporta report come testo
+    /// Export report as text
     func exportReportAsText() -> String? {
         guard let report = lastReport else {
             let newReport = generateReport()
@@ -212,7 +212,7 @@ class SmartAdvisor: ObservableObject {
         return reportGenerator.exportAsText(report)
     }
 
-    /// Pulisce la conversazione
+    /// Clear the conversation
     func clearConversation() {
         conversation = AIConversation(messages: [])
     }
@@ -222,9 +222,9 @@ class SmartAdvisor: ObservableObject {
     private func analyzeCPU(usage: Double, processes: [ProcessInfo]) -> [AIAdvice] {
         var advice: [AIAdvice] = []
 
-        // CPU molto alta
+        // CPU very high
         if usage > 90 {
-            // Trova processo colpevole
+            // Find the culprit process
             if let topProcess = processes.max(by: { $0.cpuPercent < $1.cpuPercent }) {
                 advice.append(AIAdvice(
                     type: .performance,
@@ -246,7 +246,7 @@ class SmartAdvisor: ObservableObject {
             ))
         }
 
-        // Trend CPU in aumento
+        // CPU trend increasing
         if let trend = calculateTrend(cpuHistory, windowMinutes: 2), trend > 5 {
             advice.append(AIAdvice(
                 type: .performance,
@@ -264,7 +264,7 @@ class SmartAdvisor: ObservableObject {
     private func analyzeMemory(pressure: Double, used: UInt64, total: UInt64, swap: UInt64) -> [AIAdvice] {
         var advice: [AIAdvice] = []
 
-        // Memory pressure critica
+        // Critical memory pressure
         if pressure > 80 {
             advice.append(AIAdvice(
                 type: .memory,
@@ -285,7 +285,7 @@ class SmartAdvisor: ObservableObject {
             ))
         }
 
-        // Swap in uso
+        // Swap in use
         if swap > 0 {
             let swapGB = Double(swap) / 1_000_000_000
             if swapGB > 2 {
@@ -309,7 +309,7 @@ class SmartAdvisor: ObservableObject {
             }
         }
 
-        // Memory leak detection (trend crescente costante)
+        // Memory leak detection (consistently increasing trend)
         if let trend = calculateTrend(memoryHistory, windowMinutes: 5), trend > 10 {
             advice.append(AIAdvice(
                 type: .memory,
@@ -327,7 +327,7 @@ class SmartAdvisor: ObservableObject {
     private func analyzeTemperature(temp: Double, cpuUsage: Double) -> [AIAdvice] {
         var advice: [AIAdvice] = []
 
-        // Temperatura critica
+        // Critical temperature
         if temp > 95 {
             advice.append(AIAdvice(
                 type: .temperature,
@@ -348,7 +348,7 @@ class SmartAdvisor: ObservableObject {
             ))
         }
 
-        // Temperatura alta con CPU bassa = problema
+        // High temperature with low CPU = problem
         if temp > 80 && cpuUsage < 30 {
             advice.append(AIAdvice(
                 type: .temperature,
@@ -378,7 +378,7 @@ class SmartAdvisor: ObservableObject {
     private func analyzeProcesses(_ processes: [ProcessInfo]) -> [AIAdvice] {
         var advice: [AIAdvice] = []
 
-        // Processi con CPU time molto alto (running da molto)
+        // Processes with very high CPU time (running for a long time)
         for process in processes {
             if process.cpuTimeMinutes > 60 && process.cpuPercent > 20 {
                 advice.append(AIAdvice(
@@ -422,7 +422,7 @@ class SmartAdvisor: ObservableObject {
         }
     }
 
-    /// Calcola trend (cambio percentuale) in una finestra temporale
+    /// Calculate trend (percentage change) in a time window
     private func calculateTrend(_ history: [AIDataPoint], windowMinutes: Int) -> Double? {
         guard history.count >= 2 else { return nil }
 

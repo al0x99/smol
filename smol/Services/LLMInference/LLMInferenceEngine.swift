@@ -3,38 +3,38 @@ import Combine
 
 // MARK: - Protocol
 
-/// Protocollo comune per tutti i backend di inferenza LLM
+/// Common protocol for all LLM inference backends
 protocol LLMInferenceEngine: AnyObject {
-    /// Nome del backend
+    /// Backend name
     var backendName: String { get }
 
-    /// Se il modello è caricato e pronto
+    /// Whether the model is loaded and ready
     var isModelLoaded: Bool { get }
 
-    /// Modello attualmente caricato
+    /// Currently loaded model
     var loadedModelPath: URL? { get }
 
-    /// Carica un modello dal path
+    /// Load a model from path
     func loadModel(at path: URL, config: LLMConfig) async throws
 
-    /// Scarica il modello dalla memoria
+    /// Unload the model from memory
     func unloadModel()
 
-    /// Genera testo dato un prompt
+    /// Generate text given a prompt
     func generate(prompt: String, config: GenerationConfig) async throws -> AsyncThrowingStream<String, Error>
 
-    /// Genera risposta completa (non streaming)
+    /// Generate complete response (non streaming)
     func generateComplete(prompt: String, config: GenerationConfig) async throws -> LLMResponse
 }
 
 // MARK: - Configuration Types
 
-/// Configurazione per il caricamento del modello
+/// Configuration for model loading
 struct LLMConfig: Sendable {
     var contextLength: Int = 2048
     var batchSize: Int = 512
     var threads: Int = 0  // 0 = auto
-    var gpuLayers: Int = -1  // -1 = tutti su GPU se disponibile
+    var gpuLayers: Int = -1  // -1 = all on GPU if available
     var useMmap: Bool = true
     var useMlock: Bool = false
     var verbose: Bool = false
@@ -54,7 +54,7 @@ struct LLMConfig: Sendable {
     )
 }
 
-/// Configurazione per la generazione
+/// Configuration for generation
 struct GenerationConfig: Sendable {
     var maxTokens: Int = 512
     var temperature: Float = 0.7
@@ -78,7 +78,7 @@ struct GenerationConfig: Sendable {
         topK: 20
     )
 
-    /// Config per analisi sistema smol
+    /// Config for smol system analysis
     static let systemAnalysis = GenerationConfig(
         maxTokens: 256,
         temperature: 0.5,
@@ -91,7 +91,7 @@ struct GenerationConfig: Sendable {
     )
 }
 
-/// Risposta dal modello
+/// Response from the model
 struct LLMResponse {
     let text: String
     let tokenCount: Int
@@ -182,7 +182,7 @@ enum LLMBackend: String, CaseIterable, Identifiable {
 
 // MARK: - Inference Manager
 
-/// Gestisce i backend di inferenza e fornisce un'interfaccia unificata
+/// Manages inference backends and provides a unified interface
 @MainActor
 class LLMInferenceManager: ObservableObject {
     static let shared = LLMInferenceManager()
@@ -208,7 +208,7 @@ class LLMInferenceManager: ObservableObject {
         case .mlx:
             return mlxEngine
         case .auto:
-            // Preferisce MLX su Apple Silicon, altrimenti llama.cpp
+            // Prefers MLX on Apple Silicon, otherwise llama.cpp
             if isAppleSilicon && mlxEngine?.isModelLoaded == true {
                 return mlxEngine
             }
@@ -225,7 +225,7 @@ class LLMInferenceManager: ObservableObject {
 
     // MARK: - Public API
 
-    /// Carica un modello con il backend appropriato
+    /// Load a model with the appropriate backend
     func loadModel(_ model: LLMModel, config: LLMConfig? = nil) async throws {
         let actualConfig = config ?? LLMConfig()
 
@@ -251,14 +251,14 @@ class LLMInferenceManager: ObservableObject {
         }
     }
 
-    /// Scarica il modello corrente
+    /// Unload the current model
     func unloadModel() {
         llamaCppEngine?.unloadModel()
         mlxEngine?.unloadModel()
         loadedModel = nil
     }
 
-    /// Genera risposta (streaming)
+    /// Generate response (streaming)
     func generate(prompt: String, config: GenerationConfig? = nil) async throws -> AsyncThrowingStream<String, Error> {
         let actualConfig = config ?? GenerationConfig.systemAnalysis
 
@@ -272,7 +272,7 @@ class LLMInferenceManager: ObservableObject {
         return try await engine.generate(prompt: prompt, config: actualConfig)
     }
 
-    /// Genera risposta completa
+    /// Generate complete response
     func generateComplete(prompt: String, config: GenerationConfig? = nil) async throws -> LLMResponse {
         let actualConfig = config ?? GenerationConfig.systemAnalysis
 
@@ -291,7 +291,7 @@ class LLMInferenceManager: ObservableObject {
         return response
     }
 
-    /// Verifica disponibilità backend
+    /// Check backend availability
     func isBackendAvailable(_ backend: LLMBackend) -> Bool {
         switch backend {
         case .llamaCpp:
@@ -314,7 +314,7 @@ class LLMInferenceManager: ObservableObject {
         case .mlx:
             return mlxEngine!
         case .auto:
-            // Auto-select basato su formato e hardware
+            // Auto-select based on format and hardware
             if ext == "gguf" || ext == "ggml" {
                 return llamaCppEngine!
             } else if isAppleSilicon && (ext == "safetensors" || ext == "mlx") {

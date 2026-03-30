@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Vista principale del popup menu bar - versione estesa con più info
+/// Main menu bar popup view - extended version with more info
 struct MenuBarView: View {
     @ObservedObject var monitor: SystemMonitor
     @Environment(\.openWindow) private var openWindow
@@ -8,15 +8,15 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header con stato salute
+            // Header with health status
             headerSection
 
             Divider()
 
-            // Metriche principali con barre
+            // Main metrics with bars
             metricsSection
 
-            // Ventole (se presenti)
+            // Fans (if present)
             if !monitor.fans.isEmpty {
                 Divider()
                 fansSection
@@ -24,12 +24,12 @@ struct MenuBarView: View {
 
             Divider()
 
-            // RAM dettagliata
+            // Detailed RAM
             ramDetailSection
 
             Divider()
 
-            // Top processi CPU
+            // Top CPU processes
             topProcessesSection
 
             if !monitor.suspiciousProcesses.isEmpty {
@@ -39,7 +39,7 @@ struct MenuBarView: View {
 
             Divider()
 
-            // Footer con azioni
+            // Footer with actions
             footerSection
         }
         .frame(width: 320)
@@ -110,9 +110,9 @@ struct MenuBarView: View {
             let days = hours / 24
             let remainingHours = hours % 24
             if days == 1 {
-                return "Uptime: 1 giorno, \(remainingHours)h"
+                return "Uptime: 1 day, \(remainingHours)h"
             }
-            return "Uptime: \(days) giorni, \(remainingHours)h"
+            return "Uptime: \(days) days, \(remainingHours)h"
         }
         return "Uptime: \(hours)h \(minutes)m"
     }
@@ -121,16 +121,16 @@ struct MenuBarView: View {
 
     private var metricsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // CPU con barra
+            // CPU with bar
             MetricRowWithBar(
                 icon: "cpu",
                 label: "CPU",
-                value: String(format: "%.0f%% in uso", 100 - monitor.cpuIdlePercent),
+                value: String(format: "%.0f%% in use", 100 - monitor.cpuIdlePercent),
                 progress: (100 - monitor.cpuIdlePercent) / 100,
                 color: cpuBarColor
             )
 
-            // Memory Pressure con barra
+            // Memory Pressure with bar
             MetricRowWithBar(
                 icon: "memorychip",
                 label: "Pressure",
@@ -161,7 +161,7 @@ struct MenuBarView: View {
                 }
             }
 
-            // Temperature con trend
+            // Temperature with trend
             HStack {
                 Image(systemName: temperatureIcon)
                     .frame(width: 20)
@@ -202,7 +202,7 @@ struct MenuBarView: View {
     }
 
     private var cpuBarColor: Color {
-        // Verde se uso basso, rosso se uso alto
+        // Green if low usage, red if high usage
         let cpuUsed = 100 - monitor.cpuIdlePercent
         return cpuUsed < 50 ? .green : (cpuUsed < 80 ? .yellow : .red)
     }
@@ -238,7 +238,7 @@ struct MenuBarView: View {
                     .foregroundColor(.secondary)
             }
 
-            // Barra RAM
+            // RAM bar
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
@@ -254,7 +254,7 @@ struct MenuBarView: View {
             }
             .frame(height: 6)
 
-            Text("💡 La RAM \"usata\" su macOS include cache - guarda Memory Pressure")
+            Text("💡 macOS \"used\" RAM includes cache — check Memory Pressure instead")
                 .font(.caption2)
                 .foregroundColor(.secondary)
                 .lineLimit(2)
@@ -269,7 +269,7 @@ struct MenuBarView: View {
     }
 
     private var ramBarColor: Color {
-        // Colore basato su pressure, non su % usata
+        // Color based on pressure, not on % used
         if monitor.memoryInfo.pressure < 50 { return .green }
         else if monitor.memoryInfo.pressure < 80 { return .yellow }
         else { return .red }
@@ -283,7 +283,7 @@ struct MenuBarView: View {
 
     private var fansSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header con controlli modalità
+            // Header with mode controls
             HStack {
                 Image(systemName: "fan")
                     .foregroundColor(.secondary)
@@ -294,7 +294,7 @@ struct MenuBarView: View {
 
                 Spacer()
 
-                // Pulsanti modalità
+                // Mode buttons
                 HStack(spacing: 4) {
                     FanModeButton(title: "Auto", isSelected: isSystemMode) {
                         monitor.setFanMode(.system)
@@ -305,16 +305,16 @@ struct MenuBarView: View {
                 }
             }
 
-            // Avviso helper non installato
+            // Warning: helper not installed
             if monitor.needsHelperInstallation {
                 HStack {
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundColor(.orange)
-                    Text("Helper richiesto per controllo ventole")
+                    Text("Helper required for fan control")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                     Spacer()
-                    Button("Installa") {
+                    Button("Install") {
                         monitor.installFanHelper()
                     }
                     .font(.caption2)
@@ -326,7 +326,7 @@ struct MenuBarView: View {
                 .cornerRadius(6)
             }
 
-            // Lista ventole
+            // Fan list
             ForEach(monitor.fans) { fan in
                 FanRow(fan: fan)
             }
@@ -350,7 +350,7 @@ struct MenuBarView: View {
     private var topProcessesSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Top Processi CPU")
+                Text("Top CPU Processes")
                     .font(.caption)
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
@@ -400,7 +400,7 @@ struct MenuBarView: View {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.yellow)
-                Text("\(monitor.suspiciousProcesses.count) processo/i sospetto/i")
+                Text("\(monitor.suspiciousProcesses.count) suspicious process(es)")
                     .font(.caption)
                     .fontWeight(.medium)
             }
@@ -412,7 +412,7 @@ struct MenuBarView: View {
             }
 
             if monitor.suspiciousProcesses.count > 3 {
-                Button("Mostra tutti...") {
+                Button("Show all...") {
                     openWindow(id: "dashboard")
                 }
                 .font(.caption)
@@ -437,13 +437,13 @@ struct MenuBarView: View {
             Button {
                 openWindow(id: "cleanup")
             } label: {
-                Label("Pulisci", systemImage: "trash")
+                Label("Cleanup", systemImage: "trash")
             }
             .buttonStyle(.borderless)
 
             Spacer()
 
-            Button("Esci") {
+            Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }
             .buttonStyle(.borderless)
@@ -454,9 +454,9 @@ struct MenuBarView: View {
     }
 }
 
-// MARK: - Componenti
+// MARK: - Components
 
-/// Riga metrica con barra di progresso
+/// Metric row with progress bar
 struct MetricRowWithBar: View {
     let icon: String
     let label: String
@@ -499,7 +499,7 @@ struct MetricRowWithBar: View {
     }
 }
 
-/// Riga per processo sospetto
+/// Row for suspicious process
 struct SuspiciousProcessRow: View {
     let process: ProcessInfo
     let onTerminate: () -> Void
@@ -545,7 +545,7 @@ struct SuspiciousProcessRow: View {
     }
 }
 
-/// Pulsante per modalità ventola
+/// Button for fan mode
 struct FanModeButton: View {
     let title: String
     let isSelected: Bool
@@ -566,7 +566,7 @@ struct FanModeButton: View {
     }
 }
 
-/// Riga per singola ventola
+/// Row for single fan
 struct FanRow: View {
     let fan: FanMonitor.FanInfo
 
@@ -576,7 +576,7 @@ struct FanRow: View {
                 .font(.caption)
                 .frame(width: 70, alignment: .leading)
 
-            // Barra RPM
+            // RPM bar
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()

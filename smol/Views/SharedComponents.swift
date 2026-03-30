@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Componenti Riutilizzabili
+// MARK: - Reusable Components
 
 struct HealthHeaderView: View {
     let health: SystemHealth

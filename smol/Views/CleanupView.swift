@@ -2,7 +2,7 @@ import SwiftUI
 import Combine
 import os
 
-/// Vista per pulizia sistema - trova residui e LaunchAgents orfani
+/// System cleanup view - finds residuals and orphan LaunchAgents
 struct CleanupView: View {
     @ObservedObject var monitor: SystemMonitor
     @StateObject private var cleanupService = CleanupService()
@@ -16,7 +16,7 @@ struct CleanupView: View {
 
             Divider()
 
-            // Contenuto principale
+            // Main content
             if isScanning {
                 scanningView
             } else if cleanupService.findings.isEmpty {
@@ -27,7 +27,7 @@ struct CleanupView: View {
 
             Divider()
 
-            // Footer con azioni
+            // Footer with actions
             footerSection
         }
         .frame(minWidth: 500, minHeight: 400)
@@ -326,7 +326,7 @@ class CleanupService: ObservableObject {
                 // Calcola dimensione cartella
                 let size = folderSize(atPath: folderPath)
 
-                // Solo se > 1MB per evitare falsi positivi
+                // Only if > 1MB to avoid false positives
                 if size > 1_000_000 {
                     let finding = CleanupFinding(
                         name: folder,
@@ -334,7 +334,7 @@ class CleanupService: ObservableObject {
                         category: .applicationSupport,
                         size: size,
                         reason: "App non trovata in /Applications",
-                        isSafeToRemove: false // Più cautela per Application Support
+                        isSafeToRemove: false // More caution for Application Support
                     )
                     findings.append(finding)
                 }
@@ -347,7 +347,7 @@ class CleanupService: ObservableObject {
 
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: prefsPath) else { return }
 
-        // Pattern per identificare app di terze parti
+        // Pattern to identify third-party apps
         let thirdPartyPatterns = ["com.logitech", "com.adobe", "com.macpaw", "com.cleanmymac"]
 
         for file in files where file.hasSuffix(".plist") {

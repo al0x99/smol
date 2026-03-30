@@ -1,10 +1,10 @@
 import Foundation
 import Darwin
 
-/// Monitora la memoria usando memory_pressure e statistiche VM
+/// Monitors memory using memory_pressure and VM statistics
 class MemoryMonitor {
 
-    /// Ottiene informazioni complete sulla memoria
+    /// Gets complete memory information
     func getMemoryInfo() -> MemoryInfo {
         let pressure = getMemoryPressurePercent()
         let (used, total) = getMemoryUsage()
@@ -18,10 +18,10 @@ class MemoryMonitor {
         )
     }
 
-    /// Ottiene la percentuale di memory pressure (0-100)
-    /// Questo è il valore VERO che conta, non i GB usati
+    /// Gets the memory pressure percentage (0-100)
+    /// This is the TRUE value that matters, not the GB used
     private func getMemoryPressurePercent() -> Double {
-        // Usa vm_statistics64 per calcolare la pressione
+        // Use vm_statistics64 to calculate pressure
         var stats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
 
@@ -35,29 +35,29 @@ class MemoryMonitor {
             return 0
         }
 
-        // Calcola pressione basata su pagine compresse e swap
+        // Calculate pressure based on compressed pages and swap
         let compressedPages = UInt64(stats.compressor_page_count)
         let totalPages = UInt64(stats.free_count + stats.active_count + stats.inactive_count + stats.wire_count + stats.compressor_page_count)
 
-        // La pressione è alta quando ci sono molte pagine compresse rispetto al totale
-        // e quando il sistema sta facendo paging attivo
+        // Pressure is high when there are many compressed pages relative to total
+        // and when the system is actively paging
         let compressionRatio = Double(compressedPages) / Double(max(totalPages, 1))
         let pagingActivity = Double(stats.pageouts) / 1000.0 // Normalizza
 
-        // Formula semplificata per pressure
+        // Simplified formula for pressure
         let pressure = min(100, (compressionRatio * 100) + min(50, pagingActivity))
 
         return pressure
     }
 
-    /// Ottiene memoria usata e totale in bytes
+    /// Gets used and total memory in bytes
     private func getMemoryUsage() -> (used: UInt64, total: UInt64) {
-        // Memoria fisica totale
+        // Total physical memory
         var memSize: UInt64 = 0
         var sizeOfMemSize = MemoryLayout<UInt64>.size
         sysctlbyname("hw.memsize", &memSize, &sizeOfMemSize, nil, 0)
 
-        // Statistiche VM
+        // VM statistics
         var stats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
 
@@ -73,8 +73,8 @@ class MemoryMonitor {
 
         let pageSize = UInt64(vm_kernel_page_size)
 
-        // Memoria "usata" = wired + active (non include inactive/cache/free)
-        // inactive è memoria che può essere liberata immediatamente
+        // Memory "used" = wired + active (does not include inactive/cache/free)
+        // inactive is memory that can be freed immediately
         let wired = UInt64(stats.wire_count) * pageSize
         let active = UInt64(stats.active_count) * pageSize
         let compressed = UInt64(stats.compressor_page_count) * pageSize
@@ -84,7 +84,7 @@ class MemoryMonitor {
         return (used, memSize)
     }
 
-    /// Ottiene swap usato in bytes
+    /// Gets swap used in bytes
     private func getSwapUsage() -> UInt64 {
         var swapUsage = xsw_usage()
         var size = MemoryLayout<xsw_usage>.size
@@ -98,8 +98,8 @@ class MemoryMonitor {
         return swapUsage.xsu_used
     }
 
-    /// Metodo alternativo: esegue il comando memory_pressure
-    /// Più accurato ma più lento
+    /// Alternative method: runs the memory_pressure command
+    /// More accurate but slower
     func getMemoryPressureFromCommand() -> (level: String, percent: Double) {
         let task = Process()
         let pipe = Pipe()
@@ -126,7 +126,7 @@ class MemoryMonitor {
                 }
             }
         } catch {
-            // Fallback silenzioso
+            // Silent fallback
         }
 
         return ("UNKNOWN", 0)
