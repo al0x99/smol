@@ -2,9 +2,9 @@ import Foundation
 import NaturalLanguage
 import Combine
 
-/// Engine for intelligent text generation
+/// Template-based text generation engine (fallback)
 /// Uses semantic embeddings and advanced templates for contextual responses
-/// Prepared for MLX integration when available
+/// Active when no real LLM backend (Apple AI / MLX / Cloud) is available
 /// Includes resource tracking for user transparency
 @MainActor
 class LocalLLMEngine: ObservableObject {

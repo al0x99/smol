@@ -31,6 +31,11 @@ class SmartAdvisor: ObservableObject {
     @Published var mlPrediction: MLAnomalyEngine.AnomalyPrediction?
     @Published var mlModelTrained: Bool = false
 
+    // Streaming state
+    @Published var streamingText: String = ""
+    @Published var isStreaming: Bool = false
+    @Published var streamingBackend: String?
+
     // Historical data for pattern analysis
     private var cpuHistory: [AIDataPoint] = []
     private var memoryHistory: [AIDataPoint] = []
@@ -152,7 +157,8 @@ class SmartAdvisor: ObservableObject {
         }
     }
 
-    /// Process a natural language query — tries real LLM first, falls back to templates
+    /// Process a natural language query with streaming support.
+    /// Tries real LLM backends first (with streaming), falls back to templates.
     func processQuery(_ query: String) async -> String {
         // Add user message
         let userMessage = AIConversation.Message(role: .user, content: query, timestamp: Date())
@@ -167,7 +173,12 @@ class SmartAdvisor: ObservableObject {
         var response: String
         var backendUsed = "Template"
 
-        // Try real LLM backend first
+        // Reset streaming state
+        streamingText = ""
+        isStreaming = true
+        streamingBackend = nil
+
+        // Try streaming LLM backend first
         do {
             let config = GenerationConfig(
                 maxTokens: 512,
@@ -175,24 +186,54 @@ class SmartAdvisor: ObservableObject {
                 topP: 0.9,
                 systemPrompt: systemContext
             )
-            let result = try await LLMInferenceManager.shared.generateWithFallback(
+
+            let (stream, backend) = try await LLMInferenceManager.shared.generateStreamingWithFallback(
                 prompt: query,
                 config: config
             )
-            response = result.response.text
-            backendUsed = result.backend
+            backendUsed = backend
+            streamingBackend = backend
+
+            var accumulated = ""
+            for try await token in stream {
+                accumulated += token
+                streamingText = accumulated
+            }
+            response = accumulated
+
         } catch {
-            // Fall back to template-based response
-            SmolLog.ai.info("LLM backend unavailable, using templates: \(error.localizedDescription)")
-            response = nlProcessor.processQuery(
-                query,
-                cpuHistory: cpuHistory,
-                memoryHistory: memoryHistory,
-                tempHistory: tempHistory,
-                currentAdvice: currentAdvice,
-                anomalies: anomalies
-            )
+            // Try non-streaming fallback
+            do {
+                let config = GenerationConfig(
+                    maxTokens: 512,
+                    temperature: 0.7,
+                    topP: 0.9,
+                    systemPrompt: systemContext
+                )
+                let result = try await LLMInferenceManager.shared.generateWithFallback(
+                    prompt: query,
+                    config: config
+                )
+                response = result.response.text
+                backendUsed = result.backend
+            } catch {
+                // Fall back to template-based response
+                SmolLog.ai.info("LLM backends unavailable, using templates: \(error.localizedDescription)")
+                response = nlProcessor.processQuery(
+                    query,
+                    cpuHistory: cpuHistory,
+                    memoryHistory: memoryHistory,
+                    tempHistory: tempHistory,
+                    currentAdvice: currentAdvice,
+                    anomalies: anomalies
+                )
+            }
         }
+
+        // Stop streaming
+        isStreaming = false
+        streamingText = ""
+        streamingBackend = nil
 
         // Approximate output token count
         let outputTokens = response.split(separator: " ").count
@@ -202,16 +243,23 @@ class SmartAdvisor: ObservableObject {
         let resourceCost = tracker.stopTracking()
 
         // Add assistant response with resource cost and backend source
-        var assistantMessage = AIConversation.Message(
+        let assistantMessage = AIConversation.Message(
             role: .assistant,
             content: response,
             timestamp: Date(),
-            resourceCost: resourceCost
+            resourceCost: resourceCost,
+            backendSource: backendUsed
         )
-        assistantMessage.backendSource = backendUsed
         conversation.messages.append(assistantMessage)
 
         return response
+    }
+
+    /// Cancel the current generation
+    func cancelGeneration() {
+        LLMInferenceManager.shared.cancelGeneration()
+        isStreaming = false
+        streamingText = ""
     }
 
     /// Build a system prompt with current system state for the LLM

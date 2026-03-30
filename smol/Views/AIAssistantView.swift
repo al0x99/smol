@@ -129,7 +129,7 @@ struct AIChatSection: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         // Welcome message if conversation is empty
-                        if advisor.conversation.messages.isEmpty {
+                        if advisor.conversation.messages.isEmpty && !isGenerating {
                             WelcomeMessageView()
                         }
 
@@ -139,8 +139,17 @@ struct AIChatSection: View {
                                 .id(message.id)
                         }
 
-                        // Typing indicator
-                        if isGenerating {
+                        // Streaming response
+                        if advisor.isStreaming && !advisor.streamingText.isEmpty {
+                            StreamingBubble(
+                                text: advisor.streamingText,
+                                backend: advisor.streamingBackend
+                            )
+                            .id("streaming")
+                        }
+
+                        // Typing indicator (before streaming starts)
+                        if isGenerating && !advisor.isStreaming {
                             HStack {
                                 ProgressView()
                                     .scaleEffect(0.7)
@@ -162,6 +171,11 @@ struct AIChatSection: View {
                         }
                     }
                 }
+                .onChange(of: advisor.streamingText) { _, _ in
+                    withAnimation {
+                        proxy.scrollTo("streaming", anchor: .bottom)
+                    }
+                }
                 .onChange(of: isGenerating) { _, newValue in
                     if newValue {
                         withAnimation {
@@ -173,13 +187,17 @@ struct AIChatSection: View {
 
             Divider()
 
-            // Input area
-            ChatInputView(
-                inputText: $inputText,
-                isInputFocused: _isInputFocused,
-                onSend: sendMessage,
-                onClear: { advisor.clearConversation() }
-            )
+            // Input area with cancel support
+            if isGenerating {
+                CancelGenerationBar(onCancel: cancelGeneration)
+            } else {
+                ChatInputView(
+                    inputText: $inputText,
+                    isInputFocused: _isInputFocused,
+                    onSend: sendMessage,
+                    onClear: { advisor.clearConversation() }
+                )
+            }
         }
     }
 
@@ -194,6 +212,83 @@ struct AIChatSection: View {
             _ = await advisor.processQuery(query)
             isGenerating = false
         }
+    }
+
+    private func cancelGeneration() {
+        advisor.cancelGeneration()
+        isGenerating = false
+    }
+}
+
+// MARK: - Streaming Bubble
+
+struct StreamingBubble: View {
+    let text: String
+    let backend: String?
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "brain")
+                        .font(.caption)
+                        .foregroundColor(.purple)
+
+                    Text("Assistant")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    if let backend {
+                        Text(backend)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.purple.opacity(0.15))
+                            .cornerRadius(4)
+                    }
+
+                    ProgressView()
+                        .scaleEffect(0.5)
+                }
+
+                Text(text)
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.secondary.opacity(0.1))
+                    )
+            }
+
+            Spacer(minLength: 60)
+        }
+    }
+}
+
+// MARK: - Cancel Generation Bar
+
+struct CancelGenerationBar: View {
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack {
+            Spacer()
+
+            Button {
+                onCancel()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "stop.circle.fill")
+                    Text("Stop generating")
+                        .font(.subheadline)
+                }
+                .foregroundColor(.red)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+        }
+        .padding()
+        .background(Color.red.opacity(0.05))
     }
 }
 

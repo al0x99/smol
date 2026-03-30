@@ -44,6 +44,9 @@ struct ModelSelectionView: View {
                         ErrorBanner(message: error)
                     }
 
+                    // Apple AI status card
+                    AppleAIStatusCard()
+
                     // Available models list
                     Text("Available Models")
                         .font(.headline)
@@ -268,14 +271,24 @@ struct ModelCard: View {
 
                 Spacer()
 
-                // Size badge
-                Text(model.formattedSize)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(sizeColor.opacity(0.2))
-                    .cornerRadius(8)
+                // Format + size badges
+                VStack(spacing: 4) {
+                    Text(model.format.rawValue)
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(model.format == .mlx ? Color.purple.opacity(0.2) : Color.blue.opacity(0.2))
+                        .cornerRadius(4)
+
+                    Text(model.formattedSize)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(sizeColor.opacity(0.2))
+                        .cornerRadius(8)
+                }
 
                 // Expand button
                 Button {
@@ -443,6 +456,58 @@ struct ModelInfoFooter: View {
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color.blue.opacity(0.05))
+        )
+    }
+}
+
+// MARK: - Apple AI Status Card
+
+struct AppleAIStatusCard: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "apple.logo")
+                .font(.title2)
+                .foregroundColor(FoundationModelEngine.isAvailable ? .green : .secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Apple AI (Foundation Models)")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+
+                    if FoundationModelEngine.isAvailable {
+                        Text("Available")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green.opacity(0.2))
+                            .cornerRadius(4)
+                            .foregroundColor(.green)
+                    }
+                }
+
+                Text(FoundationModelEngine.availabilityStatus)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                if FoundationModelEngine.isAvailable {
+                    Text("Free on-device AI. No download needed — uses the system language model.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Requires macOS 26 (Tahoe) or later with Apple Silicon.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(FoundationModelEngine.isAvailable ? Color.green.opacity(0.05) : Color.secondary.opacity(0.05))
+                .stroke(FoundationModelEngine.isAvailable ? Color.green.opacity(0.3) : Color.secondary.opacity(0.1), lineWidth: 1)
         )
     }
 }

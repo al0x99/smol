@@ -1,9 +1,16 @@
 import Foundation
 import os
 
+#if canImport(MLXLLM)
+import MLXLLM
+import MLXLMCommon
+import MLX
+import Tokenizers
+#endif
+
 /// Inference engine based on MLX (Apple Silicon optimized)
-/// Supports SafeTensors/MLX format models
-/// Requires mlx-swift package
+/// Uses mlx-swift-lm for real on-device LLM inference
+/// Supports SafeTensors/MLX format models from HuggingFace
 class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
 
     // MARK: - Properties
@@ -13,21 +20,41 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
     private(set) var isModelLoaded = false
     private(set) var loadedModelPath: URL?
 
-    // MLX handles
-    private var model: Any?  // MLX model object
-    private var tokenizer: Any?  // Tokenizer
+    #if canImport(MLXLLM)
+    private var modelContainer: ModelContainer?
+    #endif
+
     private var currentConfig: LLMConfig?
 
-    // Generation state (thread-safe access)
-    private var isGeneratingFlag = false
+    // Generation state
     private var shouldCancel = false
     private let stateLock = NSLock()
 
     // MARK: - Static
 
-    /// Check if MLX is available (requires Apple Silicon + mlx-swift)
+    /// Check if MLX is available (requires Apple Silicon + mlx-swift package)
     static var isAvailable: Bool {
-        #if arch(arm64) && canImport(MLX)
+        #if canImport(MLXLLM)
+        return isAppleSilicon
+        #else
+        return false
+        #endif
+    }
+
+    /// Human-readable availability status
+    static var availabilityStatus: String {
+        #if canImport(MLXLLM)
+        if isAppleSilicon {
+            return "Available (Apple Silicon)"
+        }
+        return "Requires Apple Silicon"
+        #else
+        return "MLX package not installed"
+        #endif
+    }
+
+    private static var isAppleSilicon: Bool {
+        #if arch(arm64)
         return true
         #else
         return false
@@ -36,9 +63,7 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
 
     // MARK: - Initialization
 
-    init() {
-        // MLX initializes automatically
-    }
+    init() {}
 
     deinit {
         unloadModel()
@@ -47,47 +72,54 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
     // MARK: - LLMInferenceEngine Protocol
 
     func loadModel(at path: URL, config: LLMConfig) async throws {
-        // Unload previous if present
         if isModelLoaded {
             unloadModel()
         }
 
         guard FileManager.default.fileExists(atPath: path.path) else {
-            throw LLMError.modelLoadFailed("File non trovato: \(path.path)")
-        }
-
-        // Verify extension
-        let ext = path.pathExtension.lowercased()
-        guard ext == "safetensors" || ext == "mlx" || path.lastPathComponent.contains("mlx") else {
-            throw LLMError.invalidModelFormat
+            throw LLMError.modelLoadFailed("File not found: \(path.path)")
         }
 
         currentConfig = config
 
-        // Load the model in background
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self = self else {
-                    continuation.resume(throwing: LLMError.modelLoadFailed("Engine deallocato"))
-                    return
-                }
+        #if canImport(MLXLLM)
+        SmolLog.ai.info("MLXEngine: Loading model from \(path.lastPathComponent, privacy: .public)")
 
-                do {
-                    try self.loadModelSync(at: path, config: config)
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: error)
-                }
+        do {
+            // MLX models are directories containing config.json, weights, tokenizer
+            let modelDirectory: URL
+            if path.hasDirectoryPath || FileManager.default.fileExists(atPath: path.appendingPathComponent("config.json").path) {
+                modelDirectory = path
+            } else {
+                modelDirectory = path.deletingLastPathComponent()
             }
+
+            let configuration = ModelConfiguration(directory: modelDirectory)
+            modelContainer = try await MLXLLM.loadModelContainer(configuration: configuration) { progress in
+                SmolLog.ai.debug("MLXEngine: Load progress \(progress.fractionCompleted * 100, format: .fixed(precision: 0))%")
+            }
+
+            isModelLoaded = true
+            loadedModelPath = path
+            SmolLog.ai.info("MLXEngine: Model loaded successfully")
+        } catch {
+            SmolLog.ai.error("MLXEngine: Failed to load model: \(error.localizedDescription, privacy: .public)")
+            throw LLMError.modelLoadFailed(error.localizedDescription)
         }
+        #else
+        // Without MLXLLM package, simulate loading for demo
+        SmolLog.ai.debug("MLXEngine: Demo mode — MLX package not installed")
+        isModelLoaded = true
+        loadedModelPath = path
+        #endif
     }
 
     func unloadModel() {
         shouldCancel = true
 
-        // Release MLX resources
-        model = nil
-        tokenizer = nil
+        #if canImport(MLXLLM)
+        modelContainer = nil
+        #endif
 
         isModelLoaded = false
         loadedModelPath = nil
@@ -100,29 +132,24 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
         }
 
         return AsyncThrowingStream { [weak self] continuation in
-            guard let self = self else {
-                continuation.finish(throwing: LLMError.generationFailed("Engine deallocato"))
+            guard let self else {
+                continuation.finish(throwing: LLMError.generationFailed("Engine deallocated"))
                 return
             }
 
             self.stateLock.lock()
-            self.isGeneratingFlag = true
             self.shouldCancel = false
             self.stateLock.unlock()
 
-            DispatchQueue.global(qos: .userInitiated).async {
+            Task {
                 do {
-                    try self.generateStreaming(prompt: prompt, config: config) { token in
+                    try await self.streamGenerate(prompt: prompt, config: config) { token in
                         continuation.yield(token)
                     }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
-
-                self.stateLock.lock()
-                self.isGeneratingFlag = false
-                self.stateLock.unlock()
             }
         }
     }
@@ -148,44 +175,21 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
             tokenCount: tokenCount,
             generationTime: elapsed,
             tokensPerSecond: elapsed > 0 ? Double(tokenCount) / elapsed : 0,
-            finishReason: .complete
+            finishReason: shouldCancel ? .maxTokens : .complete
         )
     }
 
     /// Cancel generation in progress
     func cancelGeneration() {
+        stateLock.lock()
         shouldCancel = true
+        stateLock.unlock()
     }
 
     // MARK: - Private Implementation
 
-    private func loadModelSync(at path: URL, config: LLMConfig) throws {
-        // With MLX, loading is optimized for Apple Silicon
-        // Uses unified memory - no GPU transfer needed
-
-        #if canImport(MLX)
-        // Load with mlx-swift
-        // let modelConfig = MLXModelConfig(...)
-        // model = try MLXLLamaModel.load(from: path, config: modelConfig)
-        // tokenizer = try Tokenizer.load(from: path.deletingLastPathComponent())
-        #else
-        // Placeholder - simulates loading
-        SmolLog.ai.debug("MLXEngine: Simulating model load from \(path.lastPathComponent, privacy: .public)")
-
-        // Simulate loading time
-        Thread.sleep(forTimeInterval: 0.5)
-        #endif
-
-        isModelLoaded = true
-        loadedModelPath = path
-    }
-
-    private func generateStreaming(prompt: String, config: GenerationConfig, onToken: @escaping (String) -> Void) throws {
-        guard isModelLoaded else {
-            throw LLMError.modelNotLoaded
-        }
-
-        // Prepare prompt with system (used when MLX is available)
+    private func streamGenerate(prompt: String, config: GenerationConfig, onToken: @escaping (String) -> Void) async throws {
+        // Build prompt with system message
         let fullPrompt: String
         if let systemPrompt = config.systemPrompt {
             fullPrompt = "<|system|>\n\(systemPrompt)</s>\n<|user|>\n\(prompt)</s>\n<|assistant|>\n"
@@ -193,144 +197,66 @@ class MLXEngine: LLMInferenceEngine, @unchecked Sendable {
             fullPrompt = prompt
         }
 
-        #if canImport(MLX)
-        // Generate with MLX
-        // let tokens = tokenizer.encode(fullPrompt)
-        // for await token in model.generate(tokens: tokens, config: config) {
-        //     if shouldCancel { break }
-        //     let text = tokenizer.decode([token])
-        //     onToken(text)
-        // }
-        _ = fullPrompt // Used in MLX code above
+        #if canImport(MLXLLM)
+        guard let container = modelContainer else {
+            throw LLMError.modelNotLoaded
+        }
+
+        let result = try await container.perform { (model, tokenizer) in
+            let tokens = tokenizer.encode(text: fullPrompt)
+            let inputArray = MLXArray(tokens)
+
+            var generatedTokens = 0
+
+            for token in try model.generate(input: inputArray, parameters: .init(
+                temperature: config.temperature,
+                topP: config.topP,
+                repetitionPenalty: config.repeatPenalty
+            )) {
+                if self.shouldCancel || generatedTokens >= config.maxTokens { break }
+
+                let tokenText = tokenizer.decode(tokens: [token.item(Int32.self)])
+                onToken(tokenText)
+                generatedTokens += 1
+            }
+
+            return generatedTokens
+        }
+
+        SmolLog.ai.debug("MLXEngine: Generated \(result) tokens")
         #else
-        _ = fullPrompt // Will be used when MLX is available
-        // Placeholder - simulated response
-        let placeholderResponse = """
-        [MLX Backend - Demo Mode]
-        This is a placeholder. For full functionality:
-        1. Add mlx-swift as an SPM dependency
-        2. Download a compatible MLX model
-        3. Rebuild the app
+        // Demo mode — simulated response
+        let demoResponse = "[MLX Demo] Model loaded from \(loadedModelPath?.lastPathComponent ?? "unknown"). " +
+            "To enable real inference, add mlx-swift-examples as an SPM dependency. " +
+            "Query: \"\(prompt.prefix(80))...\""
 
-        Your prompt was: "\(prompt.prefix(100))..."
-        """
-
-        // Simulate streaming token by token
-        for word in placeholderResponse.split(separator: " ") {
+        for word in demoResponse.split(separator: " ") {
             if shouldCancel { break }
             onToken(String(word) + " ")
-            Thread.sleep(forTimeInterval: 0.02)  // Simulate generation time
+            try await Task.sleep(nanoseconds: 20_000_000)  // 20ms per token
         }
         #endif
     }
-}
 
-// MARK: - MLX Specific Extensions
+    // MARK: - Utilities
 
-extension MLXEngine {
     /// Estimate memory requirements for a model
     static func estimateMemoryRequirements(for modelPath: URL) -> UInt64 {
-        // MLX uses unified memory, so estimate based on file size
+        // MLX uses unified memory — estimate based on file size
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: modelPath.path),
               let size = attrs[.size] as? UInt64 else {
             return 0
         }
-
-        // For quantized models, memory ~= file size
-        // For float16/32, memory can be 1.5-2x
+        // For quantized models, runtime memory ~= file size
         return size
     }
 
-    /// Check if the device supports MLX with optimal performance
+    /// Check if the device has optimal MLX support
     static var hasOptimalMLXSupport: Bool {
         #if arch(arm64)
-        // Verify chip generation (M1/M2/M3/M4)
-        var sysinfo = utsname()
-        uname(&sysinfo)
-        let machine = withUnsafePointer(to: &sysinfo.machine) {
-            $0.withMemoryRebound(to: CChar.self, capacity: 1) {
-                String(cString: $0)
-            }
-        }
-
-        // Mac mini, MacBook, iMac with Apple Silicon
-        return machine.contains("arm64") || machine.contains("Mac")
+        return true
         #else
         return false
         #endif
-    }
-
-    /// Backend information
-    var backendInfo: String {
-        var info = "MLX - Apple Machine Learning Framework\n"
-        info += "Ottimizzato per Apple Silicon\n"
-        info += "Unified Memory: Sì\n"
-
-        #if canImport(MLX)
-        info += "MLX Swift: Disponibile\n"
-        // info += "Versione: \(MLX.version)\n"
-        #else
-        info += "MLX Swift: Non installato\n"
-        info += "Modalità: Placeholder/Demo\n"
-        #endif
-
-        return info
-    }
-}
-
-// MARK: - MLX Model Formats
-
-/// Model formats supported by MLX
-enum MLXModelFormat: String, CaseIterable {
-    case safetensors = "safetensors"
-    case mlx = "mlx"
-    case npz = "npz"
-
-    var description: String {
-        switch self {
-        case .safetensors:
-            return "SafeTensors - Formato sicuro e veloce"
-        case .mlx:
-            return "MLX Native - Ottimizzato per Apple Silicon"
-        case .npz:
-            return "NumPy - Formato compatibile"
-        }
-    }
-
-    var fileExtension: String {
-        rawValue
-    }
-}
-
-// MARK: - MLX Configuration
-
-/// MLX-specific configuration
-struct MLXConfig {
-    var useMetalGPU: Bool = true
-    var memoryLimit: UInt64 = 0  // 0 = auto
-    var cachePrompts: Bool = true
-    var quantization: MLXQuantization = .auto
-
-    static let `default` = MLXConfig()
-
-    static let lowMemory = MLXConfig(
-        memoryLimit: 4_000_000_000,  // 4GB
-        cachePrompts: false
-    )
-}
-
-enum MLXQuantization: String, CaseIterable {
-    case auto = "Auto"
-    case fp16 = "FP16"
-    case int8 = "INT8"
-    case int4 = "INT4"
-
-    var description: String {
-        switch self {
-        case .auto: return "Automatico (basato su risorse)"
-        case .fp16: return "Float16 - Qualità massima"
-        case .int8: return "Int8 - Bilanciato"
-        case .int4: return "Int4 - Velocità massima"
-        }
     }
 }

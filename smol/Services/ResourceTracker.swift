@@ -53,11 +53,11 @@ class ResourceTracker {
 
             switch impact {
             case .low:
-                desc += "Impatto leggero"
+                desc += "Low impact"
             case .medium:
-                desc += "Impatto moderato"
+                desc += "Moderate impact"
             case .high:
-                desc += "Impatto elevato"
+                desc += "High impact"
             }
 
             desc += String(format: " (%.1fs, ~%.2f mWh)", duration, estimatedEnergy)
@@ -75,9 +75,9 @@ class ResourceTracker {
         }
 
         enum ImpactLevel: String {
-            case low = "Basso"
-            case medium = "Medio"
-            case high = "Alto"
+            case low = "Low"
+            case medium = "Medium"
+            case high = "High"
         }
     }
 
@@ -333,9 +333,9 @@ extension ResourceTracker {
 
         var warning: String? = nil
         if modelSize == .large {
-            warning = "Modello grande: impatto significativo su batteria e performance"
+            warning = "Large model: significant impact on battery and performance"
         } else if modelSize == .medium {
-            warning = "Potrebbe rallentare altre app durante l'esecuzione"
+            warning = "May slow down other apps during execution"
         }
 
         return CostEstimate(

@@ -383,6 +383,7 @@ struct SmolSelfMonitorView: View {
 // MARK: - AI Backend Settings
 
 struct AIBackendSettingsView: View {
+    @StateObject private var inferenceManager = LLMInferenceManager.shared
     @State private var apiKey: String = ""
     @State private var selectedProvider: AIProvider = .openRouter
     @State private var customBaseURL: String = ""
@@ -395,9 +396,32 @@ struct AIBackendSettingsView: View {
     var body: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 16) {
-                // Provider selector
+                // Backend priority selector
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Provider", systemImage: "cloud")
+                    Label("Backend Priority", systemImage: "list.number")
+                        .font(.headline)
+
+                    Picker("Backend", selection: $inferenceManager.selectedBackend) {
+                        ForEach(LLMBackend.allCases) { backend in
+                            Label(backend.rawValue, systemImage: backend.icon)
+                                .tag(backend)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(inferenceManager.selectedBackend.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                // Backend availability status
+                BackendAvailabilityView()
+
+                Divider()
+
+                // Cloud provider settings
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Cloud Provider", systemImage: "cloud")
                         .font(.headline)
 
                     Picker("Provider", selection: $selectedProvider) {
@@ -414,8 +438,6 @@ struct AIBackendSettingsView: View {
                         }
                     }
                 }
-
-                Divider()
 
                 // API Key
                 VStack(alignment: .leading, spacing: 6) {
@@ -520,16 +542,8 @@ struct AIBackendSettingsView: View {
                 Label("AI Backend", systemImage: "brain")
                     .font(.headline)
                 Spacer()
-                if KeychainHelper.hasAPIKey {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 6, height: 6)
-                        Text("Active")
-                            .font(.caption2)
-                            .foregroundColor(.green)
-                    }
-                }
+                // Show active backend status
+                ActiveBackendBadge()
             }
         }
         .onAppear {
@@ -574,6 +588,102 @@ struct AIBackendSettingsView: View {
             isTesting = false
             isConnected = result.valid
             connectionStatus = result.message
+        }
+    }
+}
+
+// MARK: - Backend Availability View
+
+struct BackendAvailabilityView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            BackendStatusRow(
+                name: "Apple AI",
+                icon: "apple.logo",
+                status: FoundationModelEngine.availabilityStatus,
+                isAvailable: FoundationModelEngine.isAvailable,
+                detail: "Free, on-device, macOS 26+"
+            )
+            BackendStatusRow(
+                name: "MLX",
+                icon: "cpu",
+                status: MLXEngine.availabilityStatus,
+                isAvailable: MLXEngine.isAvailable,
+                detail: "On-device, Apple Silicon"
+            )
+            BackendStatusRow(
+                name: "Cloud",
+                icon: "cloud",
+                status: KeychainHelper.hasAPIKey ? "API key set" : "No API key",
+                isAvailable: KeychainHelper.hasAPIKey,
+                detail: "OpenRouter, Together, Groq, OpenAI"
+            )
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.secondary.opacity(0.05))
+        )
+    }
+}
+
+struct BackendStatusRow: View {
+    let name: String
+    let icon: String
+    let status: String
+    let isAvailable: Bool
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .frame(width: 16)
+                .foregroundColor(isAvailable ? .green : .secondary)
+
+            Text(name)
+                .font(.caption)
+                .fontWeight(.medium)
+                .frame(width: 60, alignment: .leading)
+
+            Circle()
+                .fill(isAvailable ? Color.green : Color.secondary.opacity(0.3))
+                .frame(width: 6, height: 6)
+
+            Text(status)
+                .font(.caption2)
+                .foregroundColor(isAvailable ? .green : .secondary)
+
+            Spacer()
+
+            Text(detail)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+struct ActiveBackendBadge: View {
+    var body: some View {
+        let hasAny = FoundationModelEngine.isAvailable || MLXEngine.isAvailable || KeychainHelper.hasAPIKey
+
+        if hasAny {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                Text("Active")
+                    .font(.caption2)
+                    .foregroundColor(.green)
+            }
+        } else {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                Text("Template only")
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+            }
         }
     }
 }

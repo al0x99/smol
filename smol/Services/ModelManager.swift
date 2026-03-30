@@ -25,58 +25,98 @@ class ModelManager: ObservableObject {
     // MARK: - Model Catalog
 
     /// Available models for download
-    /// Uses GGUF models compatible with llama.cpp / MLX
+    /// Includes both GGUF and MLX format models
     static let modelCatalog: [LLMModel] = [
+        // GGUF Models
         LLMModel(
             id: "qwen2-0.5b",
             name: "Qwen2 0.5B",
-            description: "Modello ultra-leggero. Risposte base, velocissimo.",
+            description: "Ultra-light model. Basic responses, very fast.",
             size: .tiny,
-            sizeBytes: 350_000_000,  // ~350 MB
+            sizeBytes: 350_000_000,
             downloadURL: "https://huggingface.co/Qwen/Qwen2-0.5B-Instruct-GGUF/resolve/main/qwen2-0_5b-instruct-q4_k_m.gguf",
             requirements: ModelRequirements(minRAM: 1, recommendedRAM: 2, estimatedSpeed: 50),
-            capabilities: [.chat, .systemAnalysis]
+            capabilities: [.chat, .systemAnalysis],
+            format: .gguf
         ),
         LLMModel(
             id: "tinyllama-1.1b",
             name: "TinyLlama 1.1B",
-            description: "Piccolo ma capace. Buon bilanciamento qualità/velocità.",
+            description: "Small but capable. Good quality/speed balance.",
             size: .small,
-            sizeBytes: 670_000_000,  // ~670 MB
+            sizeBytes: 670_000_000,
             downloadURL: "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
             requirements: ModelRequirements(minRAM: 2, recommendedRAM: 4, estimatedSpeed: 35),
-            capabilities: [.chat, .systemAnalysis, .codeAnalysis]
+            capabilities: [.chat, .systemAnalysis, .codeAnalysis],
+            format: .gguf
         ),
         LLMModel(
             id: "phi-2",
             name: "Phi-2 2.7B",
-            description: "Microsoft Phi-2. Ottimo per ragionamento e analisi.",
+            description: "Microsoft Phi-2. Great for reasoning and analysis.",
             size: .medium,
-            sizeBytes: 1_600_000_000,  // ~1.6 GB
+            sizeBytes: 1_600_000_000,
             downloadURL: "https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf",
             requirements: ModelRequirements(minRAM: 4, recommendedRAM: 8, estimatedSpeed: 20),
-            capabilities: [.chat, .systemAnalysis, .codeAnalysis, .reasoning]
+            capabilities: [.chat, .systemAnalysis, .codeAnalysis, .reasoning],
+            format: .gguf
         ),
         LLMModel(
             id: "gemma-2b",
             name: "Gemma 2B",
-            description: "Google Gemma. Multilingue, buona comprensione.",
+            description: "Google Gemma. Multilingual, good comprehension.",
             size: .medium,
-            sizeBytes: 1_400_000_000,  // ~1.4 GB
+            sizeBytes: 1_400_000_000,
             downloadURL: "https://huggingface.co/google/gemma-2b-it-GGUF/resolve/main/gemma-2b-it.Q4_K_M.gguf",
             requirements: ModelRequirements(minRAM: 4, recommendedRAM: 8, estimatedSpeed: 22),
-            capabilities: [.chat, .systemAnalysis, .multilingual]
+            capabilities: [.chat, .systemAnalysis, .multilingual],
+            format: .gguf
         ),
         LLMModel(
             id: "mistral-7b",
             name: "Mistral 7B",
-            description: "Modello potente. Richiede più risorse ma ottima qualità.",
+            description: "Powerful model. Needs more resources but excellent quality.",
             size: .large,
-            sizeBytes: 4_100_000_000,  // ~4.1 GB
+            sizeBytes: 4_100_000_000,
             downloadURL: "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
             requirements: ModelRequirements(minRAM: 8, recommendedRAM: 16, estimatedSpeed: 10),
-            capabilities: [.chat, .systemAnalysis, .codeAnalysis, .reasoning, .multilingual]
-        )
+            capabilities: [.chat, .systemAnalysis, .codeAnalysis, .reasoning, .multilingual],
+            format: .gguf
+        ),
+        // MLX Models (Apple Silicon optimized)
+        LLMModel(
+            id: "qwen3-4b-mlx",
+            name: "Qwen3 4B (MLX)",
+            description: "Latest Qwen3, optimized for Apple Silicon. 4-bit quantized.",
+            size: .medium,
+            sizeBytes: 2_500_000_000,
+            downloadURL: "https://huggingface.co/mlx-community/Qwen3-4B-4bit",
+            requirements: ModelRequirements(minRAM: 4, recommendedRAM: 8, estimatedSpeed: 40),
+            capabilities: [.chat, .systemAnalysis, .codeAnalysis, .reasoning, .multilingual],
+            format: .mlx
+        ),
+        LLMModel(
+            id: "phi-3.5-mini-mlx",
+            name: "Phi 3.5 Mini (MLX)",
+            description: "Microsoft Phi 3.5. Compact yet powerful, MLX optimized.",
+            size: .medium,
+            sizeBytes: 2_200_000_000,
+            downloadURL: "https://huggingface.co/mlx-community/Phi-3.5-mini-instruct-4bit",
+            requirements: ModelRequirements(minRAM: 4, recommendedRAM: 8, estimatedSpeed: 35),
+            capabilities: [.chat, .systemAnalysis, .codeAnalysis, .reasoning],
+            format: .mlx
+        ),
+        LLMModel(
+            id: "gemma-2-2b-mlx",
+            name: "Gemma 2 2B (MLX)",
+            description: "Google Gemma 2. Fast and multilingual, MLX optimized.",
+            size: .small,
+            sizeBytes: 1_500_000_000,
+            downloadURL: "https://huggingface.co/mlx-community/gemma-2-2b-it-4bit",
+            requirements: ModelRequirements(minRAM: 2, recommendedRAM: 4, estimatedSpeed: 50),
+            capabilities: [.chat, .systemAnalysis, .multilingual],
+            format: .mlx
+        ),
     ]
 
     // MARK: - Initialization
@@ -175,14 +215,27 @@ class ModelManager: ObservableObject {
 
     /// Check if a model is downloaded
     func isModelDownloaded(_ model: LLMModel) -> Bool {
-        let modelPath = modelsDirectory.appendingPathComponent("\(model.id).gguf")
-        return FileManager.default.fileExists(atPath: modelPath.path)
+        return modelPath(for: model) != nil
     }
 
     /// Path to the downloaded model
     func modelPath(for model: LLMModel) -> URL? {
-        let path = modelsDirectory.appendingPathComponent("\(model.id).gguf")
-        return FileManager.default.fileExists(atPath: path.path) ? path : nil
+        // Check format-specific path
+        switch model.format {
+        case .gguf:
+            let path = modelsDirectory.appendingPathComponent("\(model.id).gguf")
+            return FileManager.default.fileExists(atPath: path.path) ? path : nil
+        case .mlx:
+            // MLX models are directories
+            let path = modelsDirectory.appendingPathComponent(model.id)
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path.path, isDirectory: &isDir), isDir.boolValue {
+                return path
+            }
+            // Fallback to GGUF path
+            let ggufPath = modelsDirectory.appendingPathComponent("\(model.id).gguf")
+            return FileManager.default.fileExists(atPath: ggufPath.path) ? ggufPath : nil
+        }
     }
 
     /// Check if the system has sufficient resources for a model
@@ -191,11 +244,11 @@ class ModelManager: ObservableObject {
         let totalRAMGB = Double(totalRAM) / 1_073_741_824  // GB
 
         if totalRAMGB < Double(model.requirements.minRAM) {
-            return (false, "RAM insufficiente. Richiesti almeno \(model.requirements.minRAM) GB, disponibili \(Int(totalRAMGB)) GB")
+            return (false, "Insufficient RAM. Requires at least \(model.requirements.minRAM) GB, available \(Int(totalRAMGB)) GB")
         }
 
         if totalRAMGB < Double(model.requirements.recommendedRAM) {
-            return (true, "RAM sotto il raccomandato (\(model.requirements.recommendedRAM) GB). Potrebbe essere lento.")
+            return (true, "RAM below recommended (\(model.requirements.recommendedRAM) GB). May be slow.")
         }
 
         return (true, nil)
@@ -311,9 +364,24 @@ struct LLMModel: Identifiable, Equatable {
     let downloadURL: String
     let requirements: ModelRequirements
     let capabilities: [ModelCapability]
+    let format: ModelFormat
 
     var isDownloaded: Bool = false
     var actualSize: UInt64?
+
+    init(id: String, name: String, description: String, size: ModelSize, sizeBytes: UInt64,
+         downloadURL: String, requirements: ModelRequirements, capabilities: [ModelCapability],
+         format: ModelFormat = .gguf) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.size = size
+        self.sizeBytes = sizeBytes
+        self.downloadURL = downloadURL
+        self.requirements = requirements
+        self.capabilities = capabilities
+        self.format = format
+    }
 
     var formattedSize: String {
         let sizeGB = Double(sizeBytes) / 1_073_741_824
@@ -345,6 +413,32 @@ struct LLMModel: Identifiable, Equatable {
 
     static func == (lhs: LLMModel, rhs: LLMModel) -> Bool {
         lhs.id == rhs.id
+    }
+}
+
+enum ModelFormat: String, CaseIterable {
+    case gguf = "GGUF"
+    case mlx = "MLX"
+
+    var description: String {
+        switch self {
+        case .gguf: return "GGUF — Quantized, single file"
+        case .mlx: return "MLX — Apple Silicon optimized"
+        }
+    }
+
+    var fileExtension: String {
+        switch self {
+        case .gguf: return "gguf"
+        case .mlx: return "safetensors"
+        }
+    }
+
+    var requiredBackend: LLMBackend {
+        switch self {
+        case .gguf: return .mlx  // GGUF also works via MLX with conversion
+        case .mlx: return .mlx
+        }
     }
 }
 
@@ -398,15 +492,15 @@ enum ModelError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .alreadyDownloading:
-            return "Download già in corso"
+            return "Download already in progress"
         case .invalidURL:
-            return "URL del modello non valido"
+            return "Invalid model URL"
         case .downloadFailed(let reason):
-            return "Download fallito: \(reason)"
+            return "Download failed: \(reason)"
         case .modelNotFound:
-            return "Modello non trovato"
+            return "Model not found"
         case .insufficientResources:
-            return "Risorse insufficienti per eseguire il modello"
+            return "Insufficient resources to run the model"
         }
     }
 }
