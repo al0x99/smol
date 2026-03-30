@@ -74,17 +74,17 @@ struct RAMDetailView: View {
     let memoryInfo: MemoryInfo
 
     var body: some View {
-        GroupBox("Dettaglio Memoria") {
+        GroupBox("Memory Details") {
             VStack(spacing: 12) {
                 HStack {
-                    Text("Usata")
+                    Text("Used")
                     Spacer()
                     Text(ByteCountFormatter.string(fromByteCount: Int64(memoryInfo.used), countStyle: .memory))
                         .foregroundColor(.secondary)
                 }
 
                 HStack {
-                    Text("Totale")
+                    Text("Total")
                     Spacer()
                     Text(ByteCountFormatter.string(fromByteCount: Int64(memoryInfo.total), countStyle: .memory))
                         .foregroundColor(.secondary)
@@ -100,7 +100,7 @@ struct RAMDetailView: View {
                         .foregroundColor(memoryInfo.pressure < 50 ? .green : (memoryInfo.pressure < 80 ? .yellow : .red))
                 }
 
-                // Barra pressione
+                // Pressure bar
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Rectangle()
@@ -116,7 +116,7 @@ struct RAMDetailView: View {
                 }
                 .frame(height: 8)
 
-                Text("\u{1f4a1} Su macOS, la RAM \"usata\" non significa nulla. Quello che conta è la Memory Pressure e lo Swap.")
+                Text("\u{1f4a1} On macOS, \"used\" RAM is meaningless. What matters is Memory Pressure and Swap.")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.top, 4)
@@ -136,7 +136,7 @@ struct SuspiciousProcessesCard: View {
                 HStack {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.yellow)
-                    Text("\(processes.count) Processo/i Sospetto/i")
+                    Text("\(processes.count) Suspicious Process(es)")
                         .fontWeight(.medium)
                 }
 
@@ -152,7 +152,7 @@ struct SuspiciousProcessesCard: View {
 
                         Spacer()
 
-                        Button("Termina") {
+                        Button("Terminate") {
                             onTerminate(process)
                         }
                         .buttonStyle(.bordered)
@@ -164,7 +164,7 @@ struct SuspiciousProcessesCard: View {
                 }
             }
         } label: {
-            Label("Processi Anomali", systemImage: "exclamationmark.triangle")
+            Label("Anomalous Processes", systemImage: "exclamationmark.triangle")
         }
     }
 }

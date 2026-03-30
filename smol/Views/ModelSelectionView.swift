@@ -45,7 +45,7 @@ struct ModelSelectionView: View {
                     }
 
                     // Available models list
-                    Text("Modelli Disponibili")
+                    Text("Available Models")
                         .font(.headline)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -75,16 +75,16 @@ struct ModelSelectionView: View {
                 .padding()
             }
         }
-        .alert("Elimina Modello", isPresented: $showDeleteConfirm) {
-            Button("Annulla", role: .cancel) {}
-            Button("Elimina", role: .destructive) {
+        .alert("Delete Model", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
                 if let model = modelToDelete {
                     try? modelManager.deleteModel(model)
                 }
             }
         } message: {
             if let model = modelToDelete {
-                Text("Vuoi eliminare \(model.name)? Dovrai scaricarlo di nuovo per usarlo.")
+                Text("Delete \(model.name)? You'll need to download it again.")
             }
         }
     }
@@ -99,11 +99,11 @@ struct ModelSelectionHeader: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Modelli AI Locali")
+                Text("Local AI Models")
                     .font(.title2)
                     .fontWeight(.bold)
 
-                Text("\(downloadedCount) scaricati • \(formattedStorage) usati")
+                Text("\(downloadedCount) downloaded • \(formattedStorage) used")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -146,7 +146,7 @@ struct ActiveModelCard: View {
                 .foregroundColor(.green)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Modello Attivo")
+                Text("Active Model")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
@@ -185,7 +185,7 @@ struct DownloadProgressCard: View {
                 Image(systemName: "arrow.down.circle")
                     .foregroundColor(.blue)
 
-                Text("Scaricando \(model.name)...")
+                Text("Downloading \(model.name)...")
                     .font(.subheadline)
 
                 Spacer()
@@ -338,7 +338,7 @@ struct ModelCard: View {
                     HStack(spacing: 12) {
                         if model.isDownloaded {
                             if isActive {
-                                Text("Attivo")
+                                Text("Active")
                                     .font(.caption)
                                     .fontWeight(.medium)
                                     .foregroundColor(.green)
@@ -347,7 +347,7 @@ struct ModelCard: View {
                                     .background(Color.green.opacity(0.2))
                                     .cornerRadius(8)
                             } else {
-                                Button("Usa questo") {
+                                Button("Use this") {
                                     onActivate()
                                 }
                                 .buttonStyle(.borderedProminent)
@@ -365,7 +365,7 @@ struct ModelCard: View {
                             Button {
                                 onDownload()
                             } label: {
-                                Label("Scarica", systemImage: "arrow.down.circle")
+                                Label("Download", systemImage: "arrow.down.circle")
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
@@ -425,16 +425,16 @@ struct ModelInfoFooter: View {
             HStack {
                 Image(systemName: "info.circle")
                     .foregroundColor(.blue)
-                Text("Informazioni sui Modelli")
+                Text("Model Information")
                     .font(.subheadline)
                     .fontWeight(.medium)
             }
 
             Text("""
-            • I modelli vengono eseguiti **localmente** sul tuo Mac
-            • Nessun dato viene inviato a server esterni
-            • Modelli più grandi = risposte migliori ma più lenti
-            • Formato GGUF ottimizzato per Apple Silicon
+            • Models run **locally** on your Mac
+            • No data is sent to external servers
+            • Larger models = better responses but slower
+            • GGUF format optimized for Apple Silicon
             """)
             .font(.caption)
             .foregroundColor(.secondary)
@@ -458,12 +458,12 @@ struct BackendSelectionCard: View {
             HStack {
                 Image(systemName: "gearshape.2")
                     .foregroundColor(.purple)
-                Text("Backend Inferenza")
+                Text("Inference Backend")
                     .font(.headline)
                 Spacer()
             }
 
-            Text("Seleziona il motore di inferenza per i modelli AI")
+            Text("Select the inference engine for AI models")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
@@ -492,7 +492,7 @@ struct BackendSelectionCard: View {
 
             // Supported formats
             HStack(spacing: 4) {
-                Text("Formati:")
+                Text("Formats:")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                 ForEach(selectedBackend.supportedFormats, id: \.self) { format in

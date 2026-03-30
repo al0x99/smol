@@ -167,10 +167,10 @@ struct SmolSelfMonitorView: View {
     var body: some View {
         GroupBox {
             VStack(spacing: 0) {
-                // Info statica
-                SystemInfoRow(icon: "app.badge", label: "Versione", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0", color: .indigo)
+                // Static info
+                SystemInfoRow(icon: "app.badge", label: "Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0", color: .indigo)
                 Divider().padding(.vertical, 8)
-                SystemInfoRow(icon: "doc.text", label: "Licenza", value: "MIT - Open Source", color: .mint)
+                SystemInfoRow(icon: "doc.text", label: "License", value: "MIT - Open Source", color: .mint)
 
                 Divider().padding(.vertical, 12)
 
@@ -178,7 +178,7 @@ struct SmolSelfMonitorView: View {
                 HStack {
                     Image(systemName: "gauge.with.dots.needle.33percent")
                         .foregroundColor(.orange)
-                    Text("Risorse in tempo reale")
+                    Text("Real-time resources")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
@@ -222,7 +222,7 @@ struct SmolSelfMonitorView: View {
                         .foregroundColor(.green)
                         .frame(width: 24)
 
-                    Text("Memoria")
+                    Text("Memory")
                         .foregroundColor(.secondary)
 
                     Spacer()
@@ -271,7 +271,7 @@ struct SmolSelfMonitorView: View {
                 Label("smol", systemImage: "leaf")
                     .font(.headline)
                 Spacer()
-                // Indicatore "live"
+                // "Live" indicator
                 HStack(spacing: 4) {
                     Circle()
                         .fill(Color.green)

@@ -38,11 +38,11 @@ struct CleanupView: View {
     private var headerSection: some View {
         HStack {
             VStack(alignment: .leading) {
-                Text("Pulizia Sistema")
+                Text("System Cleanup")
                     .font(.title2)
                     .fontWeight(.semibold)
 
-                Text("Trova residui di app rimosse e LaunchAgents orfani")
+                Text("Find leftovers from removed apps and orphan LaunchAgents")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -50,7 +50,7 @@ struct CleanupView: View {
             Spacer()
 
             Button(action: startScan) {
-                Label("Scansiona", systemImage: "magnifyingglass")
+                Label("Scan", systemImage: "magnifyingglass")
             }
             .buttonStyle(.borderedProminent)
             .disabled(isScanning)
@@ -65,7 +65,7 @@ struct CleanupView: View {
             ProgressView()
                 .scaleEffect(1.5)
 
-            Text("Scansione in corso...")
+            Text("Scanning...")
                 .font(.headline)
 
             Text(cleanupService.currentScanStatus)
@@ -79,9 +79,9 @@ struct CleanupView: View {
 
     private var emptyView: some View {
         ContentUnavailableView(
-            "Nessun Residuo Trovato",
+            "No Leftovers Found",
             systemImage: "checkmark.circle",
-            description: Text("Il sistema è pulito! Non sono stati trovati file orfani o residui.")
+            description: Text("System is clean! No orphan files or leftovers were found.")
         )
     }
 
@@ -109,7 +109,7 @@ struct CleanupView: View {
                 .foregroundColor(category.color)
             Text(category.displayName)
             Spacer()
-            Text("\(count) elementi")
+            Text("\(count) items")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
@@ -120,16 +120,16 @@ struct CleanupView: View {
     private var footerSection: some View {
         HStack {
             if !cleanupService.findings.isEmpty {
-                Text("\(selectedItems.count) selezionati")
+                Text("\(selectedItems.count) selected")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Button("Seleziona Tutto") {
+                Button("Select All") {
                     selectedItems = Set(cleanupService.findings.map { $0.id })
                 }
                 .buttonStyle(.borderless)
 
-                Button("Deseleziona") {
+                Button("Deselect All") {
                     selectedItems.removeAll()
                 }
                 .buttonStyle(.borderless)
@@ -142,11 +142,11 @@ struct CleanupView: View {
                     .filter { selectedItems.contains($0.id) }
                     .reduce(0) { $0 + $1.size }
 
-                Text("Spazio: \(ByteCountFormatter.string(fromByteCount: Int64(totalSize), countStyle: .file))")
+                Text("Space: \(ByteCountFormatter.string(fromByteCount: Int64(totalSize), countStyle: .file))")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Button("Elimina Selezionati") {
+                Button("Delete Selected") {
                     deleteSelectedItems()
                 }
                 .buttonStyle(.borderedProminent)
@@ -179,7 +179,7 @@ struct CleanupView: View {
                 cleanupService.findings.removeAll { $0.id == item.id }
                 selectedItems.remove(item.id)
             } catch {
-                SmolLog.cleanup.error("Errore eliminazione \(item.path, privacy: .public): \(error.localizedDescription)")
+                SmolLog.cleanup.error("Deletion error \(item.path, privacy: .public): \(error.localizedDescription)")
             }
         }
     }
@@ -218,11 +218,11 @@ struct FindingRow: View {
                     .foregroundColor(.secondary)
 
                 if item.isSafeToRemove {
-                    Label("Sicuro", systemImage: "checkmark.shield")
+                    Label("Safe", systemImage: "checkmark.shield")
                         .font(.caption2)
                         .foregroundColor(.green)
                 } else {
-                    Label("Attenzione", systemImage: "exclamationmark.triangle")
+                    Label("Caution", systemImage: "exclamationmark.triangle")
                         .font(.caption2)
                         .foregroundColor(.yellow)
                 }
@@ -243,23 +243,23 @@ class CleanupService: ObservableObject {
     func scan() async {
         findings.removeAll()
 
-        // Scansiona LaunchAgents
-        currentScanStatus = "Scansione LaunchAgents..."
+        // Scan LaunchAgents
+        currentScanStatus = "Scanning LaunchAgents..."
         await scanLaunchAgents()
 
-        // Scansiona Application Support
-        currentScanStatus = "Scansione Application Support..."
+        // Scan Application Support
+        currentScanStatus = "Scanning Application Support..."
         await scanApplicationSupport()
 
-        // Scansiona Preferences
-        currentScanStatus = "Scansione Preferences..."
+        // Scan Preferences
+        currentScanStatus = "Scanning Preferences..."
         await scanPreferences()
 
-        // Scansiona Caches
-        currentScanStatus = "Scansione Caches..."
+        // Scan Caches
+        currentScanStatus = "Scanning Caches..."
         await scanCaches()
 
-        currentScanStatus = "Completato"
+        currentScanStatus = "Completed"
     }
 
     private func scanLaunchAgents() async {
@@ -276,7 +276,7 @@ class CleanupService: ObservableObject {
                 if let plist = NSDictionary(contentsOfFile: fullPath),
                    let program = plist["Program"] as? String ?? (plist["ProgramArguments"] as? [String])?.first {
 
-                    // Verifica se l'eseguibile esiste
+                    // Check if the executable exists
                     if !FileManager.default.fileExists(atPath: program) {
                         let size = (try? FileManager.default.attributesOfItem(atPath: fullPath)[.size] as? UInt64) ?? 0
 
@@ -285,7 +285,7 @@ class CleanupService: ObservableObject {
                             path: fullPath,
                             category: .launchAgent,
                             size: size,
-                            reason: "Eseguibile non trovato: \(program)",
+                            reason: "Executable not found: \(program)",
                             isSafeToRemove: true
                         )
                         findings.append(finding)
@@ -300,7 +300,7 @@ class CleanupService: ObservableObject {
 
         guard let folders = try? FileManager.default.contentsOfDirectory(atPath: appSupportPath) else { return }
 
-        // Lista app comuni da ignorare
+        // Common system folders to ignore
         let systemFolders: Set<String> = [
             "com.apple", "Apple", "AddressBook", "Dock", "iCloud",
             "CloudDocs", "Knowledge", "CallHistoryDB", "Safari",
@@ -308,12 +308,12 @@ class CleanupService: ObservableObject {
         ]
 
         for folder in folders {
-            // Salta cartelle di sistema
+            // Skip system folders
             if systemFolders.contains(where: { folder.contains($0) }) { continue }
 
             let folderPath = appSupportPath + "/" + folder
 
-            // Verifica se esiste un'app corrispondente
+            // Check if a corresponding app exists
             let possibleAppPaths = [
                 "/Applications/\(folder).app",
                 "/Applications/\(folder.replacingOccurrences(of: " ", with: "")).app",
@@ -323,7 +323,7 @@ class CleanupService: ObservableObject {
             let appExists = possibleAppPaths.contains { FileManager.default.fileExists(atPath: $0) }
 
             if !appExists {
-                // Calcola dimensione cartella
+                // Calculate folder size
                 let size = folderSize(atPath: folderPath)
 
                 // Only if > 1MB to avoid false positives
@@ -333,7 +333,7 @@ class CleanupService: ObservableObject {
                         path: folderPath,
                         category: .applicationSupport,
                         size: size,
-                        reason: "App non trovata in /Applications",
+                        reason: "App not found in /Applications",
                         isSafeToRemove: false // More caution for Application Support
                     )
                     findings.append(finding)
@@ -361,7 +361,7 @@ class CleanupService: ObservableObject {
                         path: fullPath,
                         category: .preferences,
                         size: size,
-                        reason: "Preferenze app rimossa",
+                        reason: "Preferences from removed app",
                         isSafeToRemove: true
                     )
                     findings.append(finding)
@@ -379,14 +379,14 @@ class CleanupService: ObservableObject {
             let folderPath = cachePath + "/" + folder
             let size = folderSize(atPath: folderPath)
 
-            // Solo cache > 100MB
+            // Only cache > 100MB
             if size > 100_000_000 {
                 let finding = CleanupFinding(
                     name: folder,
                     path: folderPath,
                     category: .cache,
                     size: size,
-                    reason: "Cache grande (>\(size / 1_000_000)MB)",
+                    reason: "Large cache (>\(size / 1_000_000)MB)",
                     isSafeToRemove: true
                 )
                 findings.append(finding)
@@ -431,7 +431,7 @@ enum CleanupCategory: CaseIterable {
 
     var displayName: String {
         switch self {
-        case .launchAgent: return "LaunchAgents Orfani"
+        case .launchAgent: return "Orphan LaunchAgents"
         case .applicationSupport: return "Application Support"
         case .preferences: return "Preferences"
         case .cache: return "Cache"

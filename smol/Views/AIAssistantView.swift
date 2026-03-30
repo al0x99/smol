@@ -15,7 +15,7 @@ struct AIAssistantTab: View {
     enum AISection: String, CaseIterable {
         case chat = "Chat"
         case insights = "Insights"
-        case models = "Modelli"
+        case models = "Models"
         case report = "Report"
 
         var icon: String {
@@ -94,14 +94,14 @@ struct AIHeaderView: View {
                         )
                     )
 
-                Text("Assistente AI")
+                Text("AI Assistant")
                     .font(.headline)
             }
 
             Spacer()
 
             // Section picker
-            Picker("Sezione", selection: $selectedSection) {
+            Picker("Section", selection: $selectedSection) {
                 ForEach(AIAssistantTab.AISection.allCases, id: \.self) { section in
                     Label(section.rawValue, systemImage: section.icon)
                         .tag(section)
@@ -186,22 +186,22 @@ struct WelcomeMessageView: View {
                     )
                 )
 
-            Text("Ciao! Sono il tuo assistente AI")
+            Text("Hi! I'm your AI assistant")
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Posso aiutarti a capire lo stato del tuo Mac.\nProva a chiedermi qualcosa!")
+            Text("I can help you understand your Mac's status.\nTry asking me something!")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
 
             // Suggestions
             VStack(alignment: .leading, spacing: 8) {
-                Text("Esempi di domande:")
+                Text("Example questions:")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                ForEach(["Come sta la CPU?", "Perché il Mac è lento?", "Cosa dovrei chiudere?", "Ci sono anomalie?"], id: \.self) { suggestion in
+                ForEach(["How's the CPU?", "Why is my Mac slow?", "What should I close?", "Are there anomalies?"], id: \.self) { suggestion in
                     SuggestionChip(text: suggestion)
                 }
             }
@@ -253,7 +253,7 @@ struct ChatBubble: View {
                             .foregroundColor(.purple)
                     }
 
-                    Text(message.role == .user ? "Tu" : "Assistente")
+                    Text(message.role == .user ? "You" : "Assistant")
                         .font(.caption)
                         .foregroundColor(.secondary)
 
@@ -395,10 +395,10 @@ struct ChatInputView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Pulisci conversazione")
+            .help("Clear conversation")
 
             // Text field
-            TextField("Chiedi qualcosa sul tuo Mac...", text: $inputText)
+            TextField("Ask something about your Mac...", text: $inputText)
                 .textFieldStyle(.plain)
                 .padding(10)
                 .background(Color.secondary.opacity(0.1))
@@ -434,7 +434,7 @@ struct AIInsightsSection: View {
                     HStack {
                         ProgressView()
                             .scaleEffect(0.8)
-                        Text("Analizzando...")
+                        Text("Analyzing...")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -468,7 +468,7 @@ struct AnomaliesCard: View {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
-                Text("Anomalie Rilevate")
+                Text("Anomalies Detected")
                     .font(.headline)
                 Spacer()
                 Text("\(anomalies.count)")
@@ -512,7 +512,7 @@ struct AnomalyRow: View {
                     .foregroundColor(.secondary)
 
                 HStack {
-                    Text("Confidenza: \(Int(anomaly.confidence * 100))%")
+                    Text("Confidence: \(Int(anomaly.confidence * 100))%")
                         .font(.caption2)
                         .foregroundColor(.secondary)
 
@@ -551,7 +551,7 @@ struct AdviceListView: View {
         VStack(spacing: 16) {
             if !criticalAdvice.isEmpty {
                 AdviceSectionGroup(
-                    title: "Critici",
+                    title: "Critical",
                     advice: criticalAdvice,
                     color: .red
                 )
@@ -559,7 +559,7 @@ struct AdviceListView: View {
 
             if !warningAdvice.isEmpty {
                 AdviceSectionGroup(
-                    title: "Avvisi",
+                    title: "Warnings",
                     advice: warningAdvice,
                     color: .yellow
                 )
@@ -703,11 +703,11 @@ struct NoIssuesView: View {
                 .font(.system(size: 48))
                 .foregroundColor(.green)
 
-            Text("Tutto OK!")
+            Text("All Good!")
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Non ci sono problemi o consigli al momento.\nIl sistema sta funzionando bene.")
+            Text("No issues or advice at the moment.\nThe system is running well.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -744,7 +744,7 @@ struct AIReportSection: View {
                     Button {
                         exportReport()
                     } label: {
-                        Label("Esporta Report", systemImage: "square.and.arrow.up")
+                        Label("Export Report", systemImage: "square.and.arrow.up")
                     }
                     .buttonStyle(.bordered)
                     .padding(.top)
@@ -756,18 +756,18 @@ struct AIReportSection: View {
                             .font(.system(size: 48))
                             .foregroundColor(.secondary)
 
-                        Text("Nessun Report Generato")
+                        Text("No Report Generated")
                             .font(.title2)
                             .fontWeight(.semibold)
 
-                        Text("Genera un report completo sullo stato del sistema")
+                        Text("Generate a complete system status report")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
 
                         Button {
                             _ = advisor.generateReport()
                         } label: {
-                            Label("Genera Report", systemImage: "doc.badge.plus")
+                            Label("Generate Report", systemImage: "doc.badge.plus")
                         }
                         .buttonStyle(.borderedProminent)
                     }
@@ -801,11 +801,11 @@ struct ReportHeaderView: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Report Sistema")
+                Text("System Report")
                     .font(.title2)
                     .fontWeight(.bold)
 
-                Text("Generato: \(report.generatedAt, style: .date) alle \(report.generatedAt, style: .time)")
+                Text("Generated: \(report.generatedAt, style: .date) at \(report.generatedAt, style: .time)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -873,10 +873,10 @@ struct HealthScoreView: View {
     }
 
     private var scoreLabel: String {
-        if score >= 80 { return "Eccellente" }
-        else if score >= 60 { return "Buono" }
-        else if score >= 40 { return "Moderato" }
-        else { return "Critico" }
+        if score >= 80 { return "Excellent" }
+        else if score >= 60 { return "Good" }
+        else if score >= 40 { return "Moderate" }
+        else { return "Critical" }
     }
 }
 
@@ -960,7 +960,7 @@ struct RecommendationsView: View {
             HStack {
                 Image(systemName: "lightbulb.fill")
                     .foregroundColor(.yellow)
-                Text("Raccomandazioni")
+                Text("Recommendations")
                     .font(.headline)
             }
 
