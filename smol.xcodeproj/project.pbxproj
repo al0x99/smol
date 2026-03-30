@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		2CEADF612F0F2000001D3DB1 /* com.smol.fanhelper in Embed Helper */ = {isa = PBXBuildFile; fileRef = 2CEADF532F0F1F1F001D3DB1 /* com.smol.fanhelper */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		2CEADF332F0F1EDD001D3DB1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,17 +25,62 @@
 			remoteGlobalIDString = 2CEADF222F0F1EDC001D3DB1;
 			remoteInfo = smol;
 		};
+		2CEADF622F0F2000001D3DB1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2CEADF1B2F0F1EDC001D3DB1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2CEADF522F0F1F1F001D3DB1;
+			remoteInfo = com.smol.fanhelper;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		2CEADF512F0F1F1F001D3DB1 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		2CEADF602F0F2000001D3DB1 /* Embed Helper */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/LaunchServices;
+			dstSubfolderSpec = 1;
+			files = (
+				2CEADF612F0F2000001D3DB1 /* com.smol.fanhelper in Embed Helper */,
+			);
+			name = "Embed Helper";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		2CEADF232F0F1EDC001D3DB1 /* smol.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = smol.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2CEADF322F0F1EDD001D3DB1 /* smolTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = smolTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2CEADF3C2F0F1EDD001D3DB1 /* smolUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = smolUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2CEADF532F0F1F1F001D3DB1 /* com.smol.fanhelper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = com.smol.fanhelper; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		2CEADF802F0F4000001D3DB1 /* Exceptions for "smol" folder in "smol" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				com.smol.fanhelper.plist,
+				Info.plist,
+			);
+			target = 2CEADF222F0F1EDC001D3DB1 /* smol */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		2CEADF252F0F1EDC001D3DB1 /* smol */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2CEADF802F0F4000001D3DB1 /* Exceptions for "smol" folder in "smol" target */,
+			);
 			path = smol;
 			sourceTree = "<group>";
 		};
@@ -43,6 +92,11 @@
 		2CEADF3F2F0F1EDD001D3DB1 /* smolUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = smolUITests;
+			sourceTree = "<group>";
+		};
+		2CEADF542F0F1F1F001D3DB1 /* com.smol.fanhelper */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = com.smol.fanhelper;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,6 +123,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		2CEADF502F0F1F1F001D3DB1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -78,6 +139,7 @@
 				2CEADF252F0F1EDC001D3DB1 /* smol */,
 				2CEADF352F0F1EDD001D3DB1 /* smolTests */,
 				2CEADF3F2F0F1EDD001D3DB1 /* smolUITests */,
+				2CEADF542F0F1F1F001D3DB1 /* com.smol.fanhelper */,
 				2CEADF242F0F1EDC001D3DB1 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,6 +150,7 @@
 				2CEADF232F0F1EDC001D3DB1 /* smol.app */,
 				2CEADF322F0F1EDD001D3DB1 /* smolTests.xctest */,
 				2CEADF3C2F0F1EDD001D3DB1 /* smolUITests.xctest */,
+				2CEADF532F0F1F1F001D3DB1 /* com.smol.fanhelper */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -102,10 +165,13 @@
 				2CEADF1F2F0F1EDC001D3DB1 /* Sources */,
 				2CEADF202F0F1EDC001D3DB1 /* Frameworks */,
 				2CEADF212F0F1EDC001D3DB1 /* Resources */,
+				2CEADF602F0F2000001D3DB1 /* Embed Helper */,
+				2CEADF812F0F4000001D3DB1 /* Copy LaunchDaemons */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				2CEADF632F0F2000001D3DB1 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				2CEADF252F0F1EDC001D3DB1 /* smol */,
@@ -163,6 +229,28 @@
 			productReference = 2CEADF3C2F0F1EDD001D3DB1 /* smolUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		2CEADF522F0F1F1F001D3DB1 /* com.smol.fanhelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2CEADF572F0F1F1F001D3DB1 /* Build configuration list for PBXNativeTarget "com.smol.fanhelper" */;
+			buildPhases = (
+				2CEADF4F2F0F1F1F001D3DB1 /* Sources */,
+				2CEADF502F0F1F1F001D3DB1 /* Frameworks */,
+				2CEADF512F0F1F1F001D3DB1 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				2CEADF542F0F1F1F001D3DB1 /* com.smol.fanhelper */,
+			);
+			name = com.smol.fanhelper;
+			packageProductDependencies = (
+			);
+			productName = com.smol.fanhelper;
+			productReference = 2CEADF532F0F1F1F001D3DB1 /* com.smol.fanhelper */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -184,6 +272,9 @@
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 2CEADF222F0F1EDC001D3DB1;
 					};
+					2CEADF522F0F1F1F001D3DB1 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 				};
 			};
 			buildConfigurationList = 2CEADF1E2F0F1EDC001D3DB1 /* Build configuration list for PBXProject "smol" */;
@@ -203,6 +294,7 @@
 				2CEADF222F0F1EDC001D3DB1 /* smol */,
 				2CEADF312F0F1EDD001D3DB1 /* smolTests */,
 				2CEADF3B2F0F1EDD001D3DB1 /* smolUITests */,
+				2CEADF522F0F1F1F001D3DB1 /* com.smol.fanhelper */,
 			);
 		};
 /* End PBXProject section */
@@ -231,6 +323,25 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		2CEADF812F0F4000001D3DB1 /* Copy LaunchDaemons */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/smol/com.smol.fanhelper.plist",
+			);
+			name = "Copy LaunchDaemons";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(WRAPPER_NAME)/Contents/Library/LaunchDaemons/com.smol.fanhelper.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "mkdir -p \"${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/Contents/Library/LaunchDaemons\"\ncp \"${SRCROOT}/smol/com.smol.fanhelper.plist\" \"${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/Contents/Library/LaunchDaemons/\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		2CEADF1F2F0F1EDC001D3DB1 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -253,6 +364,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		2CEADF4F2F0F1F1F001D3DB1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +383,11 @@
 			isa = PBXTargetDependency;
 			target = 2CEADF222F0F1EDC001D3DB1 /* smol */;
 			targetProxy = 2CEADF3D2F0F1EDD001D3DB1 /* PBXContainerItemProxy */;
+		};
+		2CEADF632F0F2000001D3DB1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2CEADF522F0F1F1F001D3DB1 /* com.smol.fanhelper */;
+			targetProxy = 2CEADF622F0F2000001D3DB1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -394,15 +517,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = smol/smol.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JLTQ5V2UX8;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = smol/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -426,15 +551,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = smol/smol.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JLTQ5V2UX8;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = smol/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -533,6 +660,68 @@
 			};
 			name = Release;
 		};
+		2CEADF582F0F1F1F001D3DB1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = com.smol.fanhelper/smolFanHelper.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JLTQ5V2UX8;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = com.smol.fanhelper/Info.plist;
+				INSTALL_PATH = /Library/PrivilegedHelperTools;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-sectcreate",
+					__TEXT,
+					__info_plist,
+					"$(SRCROOT)/com.smol.fanhelper/Info.plist",
+					"-sectcreate",
+					__TEXT,
+					__launchd_plist,
+					"$(SRCROOT)/com.smol.fanhelper/launchd.plist",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.smol.fanhelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		2CEADF592F0F1F1F001D3DB1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = com.smol.fanhelper/smolFanHelper.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JLTQ5V2UX8;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = com.smol.fanhelper/Info.plist;
+				INSTALL_PATH = /Library/PrivilegedHelperTools;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-sectcreate",
+					__TEXT,
+					__info_plist,
+					"$(SRCROOT)/com.smol.fanhelper/Info.plist",
+					"-sectcreate",
+					__TEXT,
+					__launchd_plist,
+					"$(SRCROOT)/com.smol.fanhelper/launchd.plist",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.smol.fanhelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -568,6 +757,15 @@
 			buildConfigurations = (
 				2CEADF4D2F0F1EDD001D3DB1 /* Debug */,
 				2CEADF4E2F0F1EDD001D3DB1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2CEADF572F0F1F1F001D3DB1 /* Build configuration list for PBXNativeTarget "com.smol.fanhelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2CEADF582F0F1F1F001D3DB1 /* Debug */,
+				2CEADF592F0F1F1F001D3DB1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

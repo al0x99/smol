@@ -4,6 +4,7 @@ import Darwin
 /// Analizza i processi per trovare quelli sospetti (come Logitech che gira per 10 mesi!)
 class ProcessAnalyzer {
     private let cpuMonitor = CPUMonitor()
+    private let settings = AlertSettings.shared
 
     // Processi di sistema da ignorare
     private let systemProcesses: Set<String> = [
@@ -17,10 +18,10 @@ class ProcessAnalyzer {
         "powerd", "bluetoothd", "apsd", "cloudd", "bird"
     ]
 
-    // Soglie per rilevamento anomalie
-    private let cpuThresholdPercent: Double = 30      // CPU > 30% considerata alta
-    private let minRunningMinutes: Double = 10        // Deve girare da almeno 10 min
-    private let cpuTimeThresholdMinutes: Double = 5   // CPU time accumulato > 5 min
+    // Soglie per rilevamento anomalie (ora configurabili tramite AlertSettings)
+    private var cpuThresholdPercent: Double { settings.cpuThreshold }
+    private var minRunningMinutes: Double { settings.minRunningMinutes }
+    private var cpuTimeThresholdMinutes: Double { settings.cpuTimeThreshold }
 
     /// Trova processi che consumano risorse in modo anomalo
     func findSuspiciousProcesses() -> [ProcessInfo] {

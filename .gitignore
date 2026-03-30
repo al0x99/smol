@@ -1,0 +1,20 @@
+# Xcode build artifacts
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Xcode profiling
+*.profraw
+*.gcda
+*.gcno
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Debug logs
+/tmp/smol_*.log
+/tmp/smol_*.txt

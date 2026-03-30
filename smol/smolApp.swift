@@ -1,32 +1,60 @@
-//
-//  smolApp.swift
-//  smol
-//
-//  Created by Alin Sfirschi on 08/01/26.
-//
-
 import SwiftUI
-import SwiftData
+import AppKit
+import os
 
 @main
 struct smolApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var systemMonitor = SystemMonitor()
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        // Menu Bar
+        MenuBarExtra {
+            MenuBarView(monitor: systemMonitor)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: systemMonitor.health.iconName)
+                    .foregroundColor(systemMonitor.health.color)
+                Text(systemMonitor.menuBarText)
+                    .font(.system(.caption, design: .monospaced))
+            }
         }
-        .modelContainer(sharedModelContainer)
+        .menuBarExtraStyle(.window)
+
+        // Dashboard Window
+        Window("smol", id: "dashboard") {
+            DashboardView(monitor: systemMonitor)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 700, height: 500)
+
+        // Cleanup Window
+        Window("smol cleanup", id: "cleanup") {
+            CleanupView(monitor: systemMonitor)
+        }
+        .defaultSize(width: 500, height: 400)
+    }
+}
+
+// MARK: - App Delegate per single instance
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Chiudi altre istanze di smol
+        killOtherInstances()
+    }
+
+    private func killOtherInstances() {
+        let currentPID = Foundation.ProcessInfo.processInfo.processIdentifier
+        let runningApps = NSWorkspace.shared.runningApplications
+
+        for app in runningApps {
+            // Cerca altre istanze di smol
+            if app.bundleIdentifier == Bundle.main.bundleIdentifier,
+               app.processIdentifier != currentPID {
+                SmolLog.general.info("Terminating other instance (PID \(app.processIdentifier))")
+                app.terminate()
+            }
+        }
     }
 }

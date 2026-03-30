@@ -34,14 +34,15 @@ class SystemMonitor: ObservableObject {
     private var previousTemperature: Double = 0
     private let cpuMonitor = CPUMonitor()
     private let memoryMonitor = MemoryMonitor()
-    private let temperatureMonitor = TemperatureMonitor()
+    private let temperatureMonitor = TemperatureMonitor.shared
     private let processAnalyzer = ProcessAnalyzer()
     private let fanMonitor = FanMonitor()
 
     // MARK: - Computed Properties
 
     var menuBarText: String {
-        let cpuText = String(format: "%.0f%%", cpuIdlePercent)
+        let cpuUsed = 100 - cpuIdlePercent
+        let cpuText = String(format: "%.0f%%", cpuUsed)
         let tempText = String(format: "%.0f°", temperature)
         return "\(cpuText) \(tempText)"
     }
@@ -61,7 +62,8 @@ class SystemMonitor: ObservableObject {
     func startMonitoring() {
         // Aggiorna ogni 2 secondi
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+            guard let self else { return }
+            Task { @MainActor [weak self] in
                 self?.updateMetrics()
             }
         }
@@ -89,6 +91,17 @@ class SystemMonitor: ObservableObject {
         fanMonitor.setFanRPM(index: index, rpm: rpm)
     }
 
+    /// Verifica se l'helper privilegiato deve essere installato
+    var needsHelperInstallation: Bool {
+        fanMonitor.needsHelperInstallation
+    }
+
+    /// Installa l'helper privilegiato (richiede password admin)
+    @discardableResult
+    func installFanHelper() -> Bool {
+        fanMonitor.installHelper()
+    }
+
     // MARK: - Private Methods
 
     private func updateMetrics() {
@@ -100,9 +113,12 @@ class SystemMonitor: ObservableObject {
 
         // Temperature
         let newTemp = temperatureMonitor.getCPUTemperature()
-        temperatureTrend = newTemp > previousTemperature + 2 ? .rising :
-                          newTemp < previousTemperature - 2 ? .falling : .stable
-        previousTemperature = temperature
+        // Calcola trend confrontando con la temperatura precedente
+        if previousTemperature > 0 {  // Evita confronto con 0 iniziale
+            temperatureTrend = newTemp > previousTemperature + 2 ? .rising :
+                              newTemp < previousTemperature - 2 ? .falling : .stable
+        }
+        previousTemperature = newTemp  // Salva il valore corrente per il prossimo ciclo
         temperature = newTemp
 
         // Processi sospetti

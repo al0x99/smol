@@ -1,5 +1,8 @@
 import Foundation
 import IOKit
+import ServiceManagement
+import Security
+import os
 
 /// Monitora e controlla le ventole via SMC e IOKit
 /// Nota: Su Apple Silicon (M1/M2/M3/M4), il controllo diretto delle ventole
@@ -79,21 +82,122 @@ class FanMonitor {
     /// Verifica se l'helper è disponibile e funzionante
     private func checkHelperAvailability() {
         guard let helper = xpcConnection?.remoteObjectProxyWithErrorHandler({ [weak self] error in
+            SmolLog.fan.error("Helper XPC error: \(error.localizedDescription)")
             self?.helperAvailable = false
             self?.helperCheckDone = true
         }) as? FanHelperProtocol else {
+            SmolLog.fan.error("Failed to get helper proxy")
             helperAvailable = false
             helperCheckDone = true
             return
         }
 
-        helper.getFanCount { [weak self] count in
-            self?.helperAvailable = count > 0
-            self?.helperCheckDone = true
-            if count > 0 {
-                print("smol: Helper connected, found \(count) fan(s)")
+        // Usa ping per verificare la connettività (non dipende da SMC)
+        helper.ping { [weak self] success in
+            if success {
+                SmolLog.fan.info("Helper ping successful - helper is available")
+                self?.helperAvailable = true
+                self?.helperCheckDone = true
+
+                // Prova anche a ottenere fan count per debug
+                helper.getFanCount { count in
+                    SmolLog.fan.info("Helper reports \(count) fan(s)")
+                }
+
+                // Debug: enumera le chiavi SMC disponibili
+                helper.debugEnumerateKeys { result in
+                    SmolLog.fan.debug("Debug enumeration: \(result, privacy: .public)")
+                }
+            } else {
+                SmolLog.fan.warning("Helper ping failed")
+                self?.helperAvailable = false
+                self?.helperCheckDone = true
             }
         }
+    }
+
+    /// Installa l'helper privilegiato via SMAppService (macOS 13+)
+    /// Richiede autorizzazione admin
+    @discardableResult
+    func installHelper() -> Bool {
+        // Usa SMAppService per macOS 13+
+        let service = SMAppService.daemon(plistName: "com.smol.fanhelper.plist")
+
+        do {
+            try service.register()
+            SmolLog.fan.info("Helper registered successfully")
+
+            // Riconnetti all'helper
+            xpcConnection?.invalidate()
+            xpcConnection = nil
+            helperAvailable = false
+            helperCheckDone = false
+            connectToHelper()
+            return true
+        } catch {
+            SmolLog.fan.error("SMAppService.register failed: \(error.localizedDescription)")
+
+            // Fallback: prova con il vecchio metodo SMJobBless
+            return installHelperLegacy()
+        }
+    }
+
+    /// Metodo legacy per installare helper (pre-macOS 13)
+    /// Usa SMJobBless - deprecato ma necessario per compatibilità con macOS < 13
+    private func installHelperLegacy() -> Bool {
+        // Su macOS 13+ SMAppService dovrebbe essere usato prima
+        // Questo è solo fallback per versioni precedenti
+        guard #unavailable(macOS 13.0) else {
+            SmolLog.fan.warning("installHelperLegacy called on macOS 13+, should use SMAppService")
+            return false
+        }
+
+        var authRef: AuthorizationRef?
+        let authFlags: AuthorizationFlags = [.interactionAllowed, .preAuthorize, .extendRights]
+
+        let status = withUnsafeMutablePointer(to: &authRef) { authRefPtr in
+            AuthorizationCreate(nil, nil, authFlags, authRefPtr)
+        }
+
+        guard status == errAuthorizationSuccess else {
+            SmolLog.fan.error("AuthorizationCreate failed: \(status)")
+            return false
+        }
+
+        defer {
+            if let authRef = authRef {
+                AuthorizationFree(authRef, [])
+            }
+        }
+
+        var error: Unmanaged<CFError>?
+        // SMJobBless è deprecato in macOS 13 ma SMAppService non supporta
+        // l'installazione di privileged helpers per accesso SMC, quindi è necessario.
+        // Questo codice viene eseguito solo su macOS < 13 grazie al guard #unavailable sopra.
+        let success = SMJobBless(kSMDomainSystemLaunchd,
+                                  "com.smol.fanhelper" as CFString,
+                                  authRef,
+                                  &error)
+
+        if success {
+            SmolLog.fan.info("Helper installed successfully (legacy)")
+            xpcConnection?.invalidate()
+            xpcConnection = nil
+            helperAvailable = false
+            helperCheckDone = false
+            connectToHelper()
+            return true
+        } else {
+            if let error = error?.takeRetainedValue() {
+                SmolLog.fan.error("SMJobBless failed: \(error)")
+            }
+            return false
+        }
+    }
+
+    /// Verifica se l'helper deve essere installato/aggiornato
+    var needsHelperInstallation: Bool {
+        return isAppleSilicon && !helperAvailable && helperCheckDone
     }
 
     /// Ottiene info ventole via helper XPC
@@ -101,7 +205,7 @@ class FanMonitor {
         guard helperAvailable else { return nil }
 
         guard let helper = xpcConnection?.synchronousRemoteObjectProxyWithErrorHandler({ error in
-            print("smol: XPC Error: \(error)")
+            SmolLog.fan.error("XPC error: \(error.localizedDescription)")
         }) as? FanHelperProtocol else {
             return nil
         }
@@ -136,7 +240,7 @@ class FanMonitor {
         // Timeout 1 secondo
         let result = semaphore.wait(timeout: .now() + 1.0)
         if result == .timedOut {
-            print("smol: Helper timeout")
+            SmolLog.fan.warning("Helper timeout")
             return nil
         }
 
@@ -457,55 +561,126 @@ class FanMonitor {
         }
     }
 
+    private func debugLog(_ message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let logMessage = "\(timestamp): \(message)\n"
+        let logPath = SmolLog.logPath("smol_app_debug.log")
+        if let handle = FileHandle(forWritingAtPath: logPath) {
+            handle.seekToEndOfFile()
+            handle.write(logMessage.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: logPath, contents: logMessage.data(using: .utf8))
+        }
+        SmolLog.fan.debug("\(message)")
+    }
+
     /// Imposta modalità ventole via helper privilegiato (Apple Silicon)
     private func setFanModeViaHelper(_ mode: FanMode) {
-        guard helperAvailable,
-              let helper = xpcConnection?.remoteObjectProxyWithErrorHandler({ error in
-                  print("smol: XPC Error setting mode: \(error)")
-              }) as? FanHelperProtocol else {
-            print("smol: Helper not available for setting fan mode")
+        debugLog("setFanModeViaHelper called with mode: \(mode)")
+
+        guard helperAvailable else {
+            debugLog("Helper not available for setting fan mode (helperAvailable=false)")
             return
         }
 
-        switch mode {
-        case .system:
-            // Mode 0 = auto (disabilita force mode)
-            helper.setFanMode(mode: 0) { success in
-                if !success {
-                    print("smol: Failed to set auto fan mode")
-                }
+        guard let connection = xpcConnection else {
+            debugLog("XPC connection is nil")
+            return
+        }
+
+        // Esegui su background thread per evitare deadlock
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+
+            guard let helper = connection.synchronousRemoteObjectProxyWithErrorHandler({ error in
+                SmolLog.fan.error("XPC error setting mode: \(error.localizedDescription)")
+            }) as? FanHelperProtocol else {
+                SmolLog.fan.error("Failed to get helper proxy for setting fan mode")
+                return
             }
 
-        case .max:
-            // Imposta tutte le ventole al massimo
-            helper.getFanInfo { [weak self] info in
-                guard let count = info["count"] as? Int else { return }
-                for i in 0..<count {
-                    let maxRPM = info["fan\(i)_max"] as? Int ?? 6000
-                    self?.setFanRPMViaHelper(index: i, rpm: maxRPM)
+            switch mode {
+            case .system:
+                // Mode 0 = auto (disabilita force mode)
+                SmolLog.fan.info("Setting fan mode to system (auto)")
+                let semaphore = DispatchSemaphore(value: 0)
+                helper.setFanMode(mode: 0) { success in
+                    SmolLog.fan.info("setFanMode(0) result: \(success)")
+                    semaphore.signal()
                 }
-            }
+                _ = semaphore.wait(timeout: .now() + 2.0)
 
-        case .autoMax:
-            // Imposta RPM minimo aggressivo
-            helper.getFanInfo { [weak self] info in
-                guard let count = info["count"] as? Int else { return }
-                for i in 0..<count {
-                    let minRPM = info["fan\(i)_min"] as? Int ?? 1200
-                    let maxRPM = info["fan\(i)_max"] as? Int ?? 6000
-                    let aggressiveMin = minRPM + (maxRPM - minRPM) / 2
-                    self?.setFanRPMViaHelper(index: i, rpm: aggressiveMin)
-                }
-            }
+            case .max:
+                // Imposta tutte le ventole al massimo
+                SmolLog.fan.info("Setting fan mode to max")
+                self.setAllFansToRPM(helper: helper, rpmType: .max)
 
-        case .manual(let rpm):
-            helper.getFanInfo { [weak self] info in
-                guard let count = info["count"] as? Int else { return }
-                for i in 0..<count {
-                    self?.setFanRPMViaHelper(index: i, rpm: rpm)
-                }
+            case .autoMax:
+                // Imposta RPM minimo aggressivo (50% del range)
+                SmolLog.fan.info("Setting fan mode to autoMax")
+                self.setAllFansToRPM(helper: helper, rpmType: .autoMax)
+
+            case .manual(let rpm):
+                SmolLog.fan.info("Setting fan mode to manual RPM: \(rpm)")
+                self.setAllFansToRPM(helper: helper, rpmType: .manual(rpm))
             }
         }
+    }
+
+    private enum RPMType {
+        case max
+        case autoMax
+        case manual(Int)
+    }
+
+    private func setAllFansToRPM(helper: FanHelperProtocol, rpmType: RPMType) {
+        let semaphore = DispatchSemaphore(value: 0)
+        var fanInfo: [String: Any] = [:]
+
+        SmolLog.fan.debug("Fetching fan info...")
+        helper.getFanInfo { info in
+            fanInfo = info
+            SmolLog.fan.debug("getFanInfo returned: \(info as NSDictionary)")
+            semaphore.signal()
+        }
+
+        let waitResult = semaphore.wait(timeout: .now() + 2.0)
+        if waitResult == .timedOut {
+            SmolLog.fan.warning("getFanInfo timed out")
+            return
+        }
+
+        guard let count = fanInfo["count"] as? Int, count > 0 else {
+            SmolLog.fan.warning("No fans found in getFanInfo response")
+            return
+        }
+
+        for i in 0..<count {
+            let minRPM = fanInfo["fan\(i)_min"] as? Int ?? 1350
+            let maxRPM = fanInfo["fan\(i)_max"] as? Int ?? 5777
+
+            let targetRPM: Int
+            switch rpmType {
+            case .max:
+                targetRPM = maxRPM
+            case .autoMax:
+                targetRPM = minRPM + (maxRPM - minRPM) / 2
+            case .manual(let rpm):
+                targetRPM = rpm
+            }
+
+            SmolLog.fan.info("Setting fan \(i) to \(targetRPM) RPM")
+
+            let fanSemaphore = DispatchSemaphore(value: 0)
+            helper.setFanRPM(index: i, rpm: targetRPM) { success in
+                SmolLog.fan.info("setFanRPM(\(i), \(targetRPM)) result: \(success)")
+                fanSemaphore.signal()
+            }
+            _ = fanSemaphore.wait(timeout: .now() + 2.0)
+        }
+
+        SmolLog.fan.info("Finished setting all fans")
     }
 
     func setFanRPM(index: Int, rpm: Int) {
@@ -529,15 +704,15 @@ class FanMonitor {
     private func setFanRPMViaHelper(index: Int, rpm: Int) {
         guard helperAvailable,
               let helper = xpcConnection?.remoteObjectProxyWithErrorHandler({ error in
-                  print("smol: XPC Error setting RPM: \(error)")
+                  SmolLog.fan.error("XPC error setting RPM: \(error.localizedDescription)")
               }) as? FanHelperProtocol else {
-            print("smol: Helper not available for setting fan RPM")
+            SmolLog.fan.warning("Helper not available for setting fan RPM")
             return
         }
 
         helper.setFanRPM(index: index, rpm: rpm) { success in
             if !success {
-                print("smol: Failed to set fan \(index) to \(rpm) RPM")
+                SmolLog.fan.error("Failed to set fan \(index) to \(rpm) RPM")
             }
         }
     }
@@ -675,6 +850,7 @@ private struct SMCKeyData {
     var vers: SMCVersion = SMCVersion()
     var pLimitData: SMCPLimitData = SMCPLimitData()
     var keyInfo: SMCKeyInfoData = SMCKeyInfoData()
+    var padding: UInt16 = 0  // IMPORTANTE: padding per struct alignment (deve essere 80 bytes)
     var result: UInt8 = 0
     var status: UInt8 = 0
     var data8: UInt8 = 0

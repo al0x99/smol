@@ -36,7 +36,6 @@ class MemoryMonitor {
         }
 
         // Calcola pressione basata su pagine compresse e swap
-        let pageSize = UInt64(vm_kernel_page_size)
         let compressedPages = UInt64(stats.compressor_page_count)
         let totalPages = UInt64(stats.free_count + stats.active_count + stats.inactive_count + stats.wire_count + stats.compressor_page_count)
 
@@ -74,15 +73,12 @@ class MemoryMonitor {
 
         let pageSize = UInt64(vm_kernel_page_size)
 
-        // Memoria "usata" = wired + active + inactive (non include cache/free)
-        // Ma questo numero è fuorviante su macOS!
+        // Memoria "usata" = wired + active (non include inactive/cache/free)
+        // inactive è memoria che può essere liberata immediatamente
         let wired = UInt64(stats.wire_count) * pageSize
         let active = UInt64(stats.active_count) * pageSize
-        let inactive = UInt64(stats.inactive_count) * pageSize
         let compressed = UInt64(stats.compressor_page_count) * pageSize
 
-        // Usiamo wired + active come "realmente usata"
-        // inactive è memoria che può essere liberata immediatamente
         let used = wired + active + compressed
 
         return (used, memSize)
