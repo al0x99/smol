@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square&logo=apple" />
+  <img src="https://img.shields.io/badge/macOS-26%2B-black?style=flat-square&logo=apple" />
   <img src="https://img.shields.io/badge/Swift-6-orange?style=flat-square&logo=swift&logoColor=white" />
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" />
   <img src="https://img.shields.io/badge/size-~5MB-green?style=flat-square" />
@@ -16,6 +16,14 @@
 
 <p align="center">
   <em>"CleanMyMac uses 500MB to tell you your Mac is dirty. smol uses 5MB to tell you the truth."</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/menubar-icon.png" alt="smol menu bar icon" width="360" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/dashboard-popover.png" alt="smol dashboard popover" width="360" />
 </p>
 
 ---
@@ -79,7 +87,7 @@ Features:
 ## Install
 
 ### Download
-Grab the latest `.dmg` from [**Releases**](https://github.com/al0x99/smol/releases).
+Signed `.dmg` coming with the first [GitHub Release](https://github.com/al0x99/smol/releases). Until then, build from source — it's fast.
 
 ### Build from source
 ```bash
@@ -89,7 +97,9 @@ open smol.xcodeproj
 # Build & Run (Cmd+R)
 ```
 
-**Requirements:** Xcode 16+, macOS 14+ (Sonoma)
+**Requirements:** Xcode 26+, macOS 26 (Tahoe). The Apple AI backend uses `FoundationModels`, which is macOS 26-only.
+
+> **Note on MLX backend:** to enable on-device MLX inference, add the [`mlx-swift`](https://github.com/ml-explore/mlx-swift) SPM dependency in Xcode (*File → Add Package Dependencies*) and attach `MLX`, `MLXNN`, `MLXRandom` to the `smol` target. Without it, the MLX engine falls back to placeholder responses — the rest of the app works fine.
 
 ---
 
@@ -130,6 +140,10 @@ smol.app
 └── XPC Helper (com.smol.fanhelper) — privileged fan control
 ```
 
+### Apple Silicon SMC notes
+
+Intel Macs and Apple Silicon expose fan data through different SMC key formats. On M-series machines, RPM values live in keys like `F0Ac`/`F1Ac` encoded as **IEEE 754 float (`flt`)**, not the fixed-point `fpe2` used on Intel. Writing to `F0Tg` / `F1Tg` starts the fans even when the current RPM is `0`. This is why smol ships its own SMC reader via a privileged XPC helper — published SMC wrappers are still Intel-era.
+
 ---
 
 ## AI Backend Setup
@@ -138,9 +152,10 @@ smol.app
 Zero configuration. If you're on macOS Tahoe with Apple Intelligence enabled, it just works.
 
 ### MLX (Apple Silicon)
-1. Go to **AI Assistant → Models**
-2. Download an MLX model (e.g. Gemma 2 2B — 1.5 GB)
-3. Start chatting
+1. Add the `mlx-swift` SPM package to the project (see *Build from source*)
+2. Go to **AI Assistant → Models**
+3. Download an MLX model (e.g. Gemma 2 2B — 1.5 GB)
+4. Start chatting
 
 ### Cloud (OpenRouter)
 1. Go to **Settings → AI Backend**
@@ -171,7 +186,7 @@ Reading CPU temperature requires direct SMC access via IOKit, which isn't allowe
 ## Contributing
 
 PRs welcome. Especially for:
-- Adding apps to the bloatware database
+- Adding apps to the bloatware database (`smol/KnownBloatware.json`)
 - Improving anomaly detection algorithms
 - New Apple Silicon sensor support
 - Translations
