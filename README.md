@@ -101,6 +101,18 @@ open smol.xcodeproj
 
 > **Note on MLX backend:** to enable on-device MLX inference, add the [`mlx-swift`](https://github.com/ml-explore/mlx-swift) SPM dependency in Xcode (*File → Add Package Dependencies*) and attach `MLX`, `MLXNN`, `MLXRandom` to the `smol` target. Without it, the MLX engine falls back to placeholder responses — the rest of the app works fine.
 
+### Build a signed, notarized DMG
+See [`scripts/release.sh`](scripts/release.sh). Requires a **Developer ID Application** certificate and a stored notarytool profile:
+
+```bash
+xcrun notarytool store-credentials smol-notary \
+  --apple-id you@example.com --team-id TEAMID --password <app-specific-password>
+
+DEV_ID_APPLICATION="Developer ID Application: Your Name (TEAMID)" \
+NOTARY_PROFILE=smol-notary \
+scripts/release.sh 1.0.0
+```
+
 ---
 
 ## Size comparison
