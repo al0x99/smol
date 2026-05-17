@@ -40,11 +40,22 @@ class SMCAccess {
     // it to wake a parked fan. M-series firmware ignores F*Tg when the
     // fan is parked at 0 RPM, so we lift F*Mn instead — but that becomes
     // a permanent floor unless we restore it when the user switches back
-    // to auto mode. Keyed by fan index.
+    // to auto mode. Keyed by fan index. Mirrored to /tmp so a helper
+    // crash between wake and restore doesn't leave the fan minimum
+    // permanently raised — `restoreFromCrashIfNeeded` reads it back at
+    // startup. /tmp is cleared on reboot, which is exactly the right
+    // lifetime: SMC F*Mn also resets on reboot.
     private var originalMinRPM: [Int: Int] = [:]
+
+    /// Path of the per-fan crash-safety mirror for `originalMinRPM`.
+    private static let crashSafetyDir = "/tmp/com.smol.fanhelper"
+    private static func crashSafetyPath(index: Int) -> String {
+        return "\(crashSafetyDir)/originalMinRPM.\(index)"
+    }
 
     init() {
         openConnection()
+        restoreFromCrashIfNeeded()
     }
 
     deinit {
@@ -340,12 +351,17 @@ class SMCAccess {
         // true factory minimum with a previously-raised wake value.
         if originalMinRPM[index] == nil {
             originalMinRPM[index] = currentMin
+            persistOriginalMinRPM(index: index, value: currentMin)
             smcLog("smolFanHelper: Cached original F%dMn=%d for later restore", index, currentMin)
         }
 
         // Clamp to the physical fan ceiling so we don't ask SMC to set a
         // minimum above the maximum (firmware would reject the whole write).
         let fanMax = getFanMaxRPM(index: index)
+        guard fanMax > 0 else {
+            smcLog("smolFanHelper: F%dMx returned 0 — refusing to wake fan with unknown ceiling", index)
+            return false
+        }
         let wakeRPM = max(min(rpm, fanMax), currentMin)
 
         if wakeRPM == currentMin {
@@ -381,6 +397,7 @@ class SMCAccess {
         let currentMin = bytesToRPM(mnVal.bytes, dataType: mnVal.dataType)
         if currentMin == originalMin {
             originalMinRPM[index] = nil
+            clearPersistedOriginalMinRPM(index: index)
             return true
         }
 
@@ -390,6 +407,7 @@ class SMCAccess {
 
         if success {
             originalMinRPM[index] = nil
+            clearPersistedOriginalMinRPM(index: index)
         }
         return success
     }
@@ -398,6 +416,43 @@ class SMCAccess {
     /// Used by the dispatcher to know whether the fan was woken by us.
     func hasCachedMinimum(index: Int) -> Bool {
         return originalMinRPM[index] != nil
+    }
+
+    // MARK: - Crash-safe F*Mn persistence
+
+    /// Mirror `originalMinRPM[index]` to `/tmp` so the restore can run
+    /// even after the helper crashes and is respawned by launchd.
+    private func persistOriginalMinRPM(index: Int, value: Int) {
+        try? FileManager.default.createDirectory(atPath: Self.crashSafetyDir,
+                                                 withIntermediateDirectories: true)
+        let path = Self.crashSafetyPath(index: index)
+        try? "\(value)".write(toFile: path, atomically: true, encoding: .utf8)
+    }
+
+    private func clearPersistedOriginalMinRPM(index: Int) {
+        try? FileManager.default.removeItem(atPath: Self.crashSafetyPath(index: index))
+    }
+
+    /// On startup, read any persisted `originalMinRPM` files and immediately
+    /// restore the floors before the listener accepts XPC traffic. This
+    /// recovers from the helper-crashed-between-wake-and-restore case in
+    /// which the in-memory cache was lost but the SMC was still holding a
+    /// lifted F*Mn.
+    private func restoreFromCrashIfNeeded() {
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: Self.crashSafetyDir) else {
+            return
+        }
+        for entry in entries where entry.hasPrefix("originalMinRPM.") {
+            let suffix = entry.replacingOccurrences(of: "originalMinRPM.", with: "")
+            guard let index = Int(suffix),
+                  let contents = try? String(contentsOfFile: "\(Self.crashSafetyDir)/\(entry)", encoding: .utf8),
+                  let value = Int(contents.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                continue
+            }
+            smcLog("smolFanHelper: Recovered persisted original F%dMn=%d from prior session — restoring", index, value)
+            originalMinRPM[index] = value
+            _ = restoreFanMinimum(index: index)
+        }
     }
 
     /// Debug: Try to read various fan keys to find those that work on Apple Silicon
