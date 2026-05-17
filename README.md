@@ -88,7 +88,7 @@ Features:
 ## Install
 
 ### Download
-Signed `.dmg` coming with the first [GitHub Release](https://github.com/al0x99/smol/releases). Until then, build from source — it's fast.
+Grab the signed, notarised `.dmg` from the latest [GitHub Release](https://github.com/al0x99/smol/releases/latest) (arm64, Apple Silicon). Or build from source — it's fast.
 
 ### Build from source
 ```bash
@@ -192,7 +192,7 @@ Reading CPU temperature requires direct SMC access via IOKit, which isn't allowe
 - **NaturalLanguage** — intent detection, sentiment analysis
 - **FoundationModels** — Apple's on-device LLM (macOS 26+)
 - **Security.framework** — Keychain for API keys
-- **XPC / SMJobBless** — privileged helper for fan control
+- **XPC / SMAppService** — privileged helper for fan control (SMJobBless fallback for pre-macOS-13)
 
 ---
 
