@@ -39,7 +39,7 @@ struct TemperatureTab: View {
                             }
                         }
 
-                        // Ultimo aggiornamento
+                        // Last updated timestamp
                         HStack {
                             Spacer()
                             Text("\("temp.last_updated".localized(localization)): \(lastUpdate, style: .time)")
@@ -282,19 +282,16 @@ struct TemperatureSensorRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Indicatore colore temperatura
             Circle()
                 .fill(temperatureColor)
                 .frame(width: 8, height: 8)
 
-            // Nome sensore
             Text(sensor.name)
                 .font(.system(.body, design: .default))
                 .lineLimit(1)
 
             Spacer()
 
-            // Barra temperatura mini
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
@@ -310,7 +307,7 @@ struct TemperatureSensorRow: View {
             }
             .frame(width: 60, height: 4)
 
-            // Temperatura
+            // Temperature
             Text(String(format: "%.0f°C", sensor.temperature))
                 .font(.system(.body, design: .monospaced))
                 .fontWeight(.medium)

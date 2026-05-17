@@ -2,15 +2,15 @@ import Foundation
 import NaturalLanguage
 import Combine
 
-/// Template-based text generation engine (fallback)
-/// Uses semantic embeddings and advanced templates for contextual responses
-/// Active when no real LLM backend (Apple AI / MLX / Cloud) is available
-/// Includes resource tracking for user transparency
+/// Template-based text-generation engine (fallback).
+/// Uses semantic embeddings and pattern-matched templates for contextual
+/// answers when no real LLM backend (Apple AI / MLX / Cloud) is available.
+/// Includes resource tracking so the user can see what each call costs.
 @MainActor
 class LocalLLMEngine: ObservableObject {
     static let shared = LocalLLMEngine()
 
-    // MARK: - Published State
+    // MARK: - Published state
 
     @Published var isInitialized = false
     @Published var isGenerating = false
@@ -18,34 +18,32 @@ class LocalLLMEngine: ObservableObject {
     @Published var lastResourceCost: ResourceTracker.ResourceCost?
     @Published var showResourceWarning = false
 
-    // MARK: - NL Components
+    // MARK: - NL components
 
     private let embedding: NLEmbedding?
     private let tagger: NLTagger
     private let recognizer: NLLanguageRecognizer
 
-    // Context memory for conversation
+    // Conversation memory.
     private var conversationContext: [ContextItem] = []
     private let maxContextItems = 10
 
     // MARK: - Initialization
 
     init() {
-        // Load Italian/English embedding for semantic similarity
-        embedding = NLEmbedding.wordEmbedding(for: .italian) ?? NLEmbedding.wordEmbedding(for: .english)
+        // English embedding by default; fall back to Italian if English isn't installed.
+        embedding = NLEmbedding.wordEmbedding(for: .english) ?? NLEmbedding.wordEmbedding(for: .italian)
         tagger = NLTagger(tagSchemes: [.lexicalClass, .nameType, .sentimentScore])
         recognizer = NLLanguageRecognizer()
 
         isInitialized = embedding != nil
-
-        // Load saved context
         loadContext()
     }
 
     // MARK: - Types
 
     struct ContextItem: Codable {
-        let role: String // "user" o "assistant"
+        let role: String // "user" or "assistant"
         let content: String
         let timestamp: Date
         let sentiment: Double?
@@ -61,7 +59,7 @@ class LocalLLMEngine: ObservableObject {
         let prediction: AnomalyPredictionInfo?
     }
 
-    /// ML prediction info (decoupled from MLAnomalyEngine)
+    /// ML prediction info (decoupled from MLAnomalyEngine).
     struct AnomalyPredictionInfo {
         let isAnomaly: Bool
         let confidence: Double
@@ -71,23 +69,22 @@ class LocalLLMEngine: ObservableObject {
         let predictedTemp: Double
     }
 
-    // MARK: - Response Generation
+    // MARK: - Response generation
 
-    /// Result with response and resource cost
     struct GenerationResult {
         let response: String
         let resourceCost: ResourceTracker.ResourceCost
         let costSummary: String
     }
 
-    /// Estimate cost before generating (for confirmation UI)
+    /// Estimate cost before generating (for confirmation UI).
     func estimateCost(query: String) -> ResourceTracker.CostEstimate {
         let wordCount = query.split(separator: " ").count
-        let estimatedTokens = wordCount * 2  // Approximation
+        let estimatedTokens = wordCount * 2
         return ResourceTracker.estimateLLMCost(inputTokens: estimatedTokens, modelSize: .tiny)
     }
 
-    /// Generate an intelligent response to the query
+    /// Generate an answer to the query.
     func generateResponse(
         query: String,
         systemContext: SystemContext
@@ -95,39 +92,30 @@ class LocalLLMEngine: ObservableObject {
         isGenerating = true
         defer { isGenerating = false }
 
-        // Track resources during generation
         let tracker = ResourceTracker.shared
         tracker.startTracking()
 
-        // 1. Analyze the query
         let analysis = analyzeQuery(query)
-
-        // 2. Add to context
         addToContext(role: "user", content: query, sentiment: analysis.sentiment, topics: analysis.topics)
 
-        // 3. Generate response based on analysis
         let response = await buildResponse(
             query: query,
             analysis: analysis,
             systemContext: systemContext
         )
 
-        // Count approximate tokens
         let outputTokens = response.split(separator: " ").count
         tracker.addTokens(outputTokens)
 
-        // 4. Add response to context
         addToContext(role: "assistant", content: response, sentiment: nil, topics: analysis.topics)
 
-        // 5. Stop tracking and save cost
         let cost = tracker.stopTracking()
         lastResourceCost = cost
-
         lastResponse = response
         return response
     }
 
-    /// Generate response with detailed resource report
+    /// Generate with a detailed cost report.
     func generateResponseWithCost(
         query: String,
         systemContext: SystemContext
@@ -145,14 +133,14 @@ class LocalLLMEngine: ObservableObject {
         )
     }
 
-    // MARK: - Query Analysis
+    // MARK: - Query analysis
 
     struct QueryAnalysis {
         let intent: QueryIntent
-        let sentiment: Double // -1 a 1
+        let sentiment: Double           // -1...1
         let topics: [String]
-        let entities: [String: String] // nome -> tipo
-        let urgency: Double // 0 a 1
+        let entities: [String: String]  // name -> type
+        let urgency: Double             // 0...1
         let isQuestion: Bool
     }
 
@@ -170,7 +158,7 @@ class LocalLLMEngine: ObservableObject {
     private func analyzeQuery(_ query: String) -> QueryAnalysis {
         let lowercased = query.lowercased()
 
-        // Sentiment analysis
+        // Sentiment.
         tagger.string = query
         var sentimentSum = 0.0
         var count = 0
@@ -184,7 +172,7 @@ class LocalLLMEngine: ObservableObject {
         }
         let sentiment = count > 0 ? sentimentSum / Double(count) : 0
 
-        // Topic extraction
+        // Topics + entities.
         var topics: [String] = []
         var entities: [String: String] = [:]
 
@@ -195,7 +183,6 @@ class LocalLLMEngine: ObservableObject {
             return true
         }
 
-        // Named entities
         tagger.enumerateTags(in: query.startIndex..<query.endIndex, unit: .word, scheme: .nameType) { tag, range in
             if let tag = tag {
                 entities[String(query[range])] = tag.rawValue
@@ -203,17 +190,19 @@ class LocalLLMEngine: ObservableObject {
             return true
         }
 
-        // Intent detection with keyword matching + semantic similarity
         let intent = detectIntent(lowercased)
 
-        // Urgency detection
-        let urgencyKeywords = ["urgente", "subito", "immediato", "critico", "emergency", "urgent", "now", "help"]
+        // Urgency cues (bilingual).
+        let urgencyKeywords = ["urgent", "now", "help", "emergency", "critical",
+                               "urgente", "subito", "immediato", "critico"]
         let urgency = urgencyKeywords.contains(where: { lowercased.contains($0) }) ? 0.9 : 0.3
 
-        // Is question
-        let isQuestion = query.contains("?") || lowercased.starts(with: "come") ||
-                         lowercased.starts(with: "perché") || lowercased.starts(with: "cosa") ||
-                         lowercased.starts(with: "quanto") || lowercased.starts(with: "qual")
+        let isQuestion = query.contains("?")
+            || lowercased.starts(with: "how")  || lowercased.starts(with: "why")
+            || lowercased.starts(with: "what") || lowercased.starts(with: "when")
+            || lowercased.starts(with: "come") || lowercased.starts(with: "perché")
+            || lowercased.starts(with: "cosa") || lowercased.starts(with: "quanto")
+            || lowercased.starts(with: "qual")
 
         return QueryAnalysis(
             intent: intent,
@@ -226,15 +215,22 @@ class LocalLLMEngine: ObservableObject {
     }
 
     private func detectIntent(_ query: String) -> QueryIntent {
-        // Keywords for each intent
+        // Bilingual keyword table.
         let intentKeywords: [QueryIntent: [String]] = [
-            .statusCheck: ["come sta", "status", "stato", "situazione", "salute", "quanto", "attuale"],
-            .troubleshoot: ["problema", "errore", "lento", "bug", "crash", "perché", "non funziona", "aiuto"],
-            .optimize: ["ottimizza", "migliora", "velocizza", "libera", "pulisci", "performance"],
-            .explain: ["spiega", "cos'è", "cosa significa", "perché", "come funziona"],
-            .predict: ["prevedi", "previsione", "futuro", "trend", "andrà"],
-            .compare: ["confronta", "differenza", "meglio", "peggio", "vs"],
-            .action: ["chiudi", "termina", "avvia", "apri", "esegui", "fai"]
+            .statusCheck:  ["status", "how is", "current", "health",
+                            "stato", "come sta", "situazione", "salute", "quanto", "attuale"],
+            .troubleshoot: ["problem", "issue", "slow", "bug", "crash", "why", "doesn't work", "help",
+                            "problema", "errore", "lento", "perché", "non funziona", "aiuto"],
+            .optimize:     ["optimize", "speed up", "improve", "clean", "performance",
+                            "ottimizza", "migliora", "velocizza", "libera", "pulisci"],
+            .explain:      ["explain", "what is", "what does", "how does",
+                            "spiega", "cos'è", "cosa significa", "come funziona"],
+            .predict:      ["predict", "forecast", "trend", "future",
+                            "prevedi", "previsione", "futuro", "andrà"],
+            .compare:      ["compare", "difference", "better", "worse", "vs",
+                            "confronta", "differenza", "meglio", "peggio"],
+            .action:       ["close", "kill", "open", "launch", "run", "do",
+                            "chiudi", "termina", "avvia", "apri", "esegui", "fai"]
         ]
 
         for (intent, keywords) in intentKeywords {
@@ -243,7 +239,7 @@ class LocalLLMEngine: ObservableObject {
             }
         }
 
-        // Use embedding for similarity if available
+        // Semantic similarity via embeddings, if available.
         if let embedding = embedding {
             let queryWords = query.split(separator: " ").map(String.init)
             var bestIntent = QueryIntent.chitchat
@@ -253,11 +249,9 @@ class LocalLLMEngine: ObservableObject {
                 var score = 0.0
                 for word in queryWords {
                     for keyword in keywords {
-                        // NLEmbedding.distance returns Double (not Optional)
-                        // Returns a very high value if words are not in vocabulary
                         let distance = embedding.distance(between: word, and: keyword)
-                        if distance < 2.0 { // Only if words are in vocabulary
-                            score += max(0, 1 - distance) // Convert distance to similarity
+                        if distance < 2.0 {
+                            score += max(0, 1 - distance)
                         }
                     }
                 }
@@ -275,93 +269,69 @@ class LocalLLMEngine: ObservableObject {
         return .chitchat
     }
 
-    // MARK: - Response Building
+    // MARK: - Response building
 
     private func buildResponse(
         query: String,
         analysis: QueryAnalysis,
         systemContext: SystemContext
     ) async -> String {
-
-        // Build response based on intent
         switch analysis.intent {
-        case .statusCheck:
-            return buildStatusResponse(systemContext: systemContext, topics: analysis.topics)
-
-        case .troubleshoot:
-            return buildTroubleshootResponse(systemContext: systemContext, query: query)
-
-        case .optimize:
-            return buildOptimizeResponse(systemContext: systemContext)
-
-        case .explain:
-            return buildExplainResponse(query: query, systemContext: systemContext)
-
-        case .predict:
-            return buildPredictResponse(systemContext: systemContext)
-
-        case .compare:
-            return buildCompareResponse(query: query, systemContext: systemContext)
-
-        case .action:
-            return buildActionResponse(query: query, systemContext: systemContext)
-
-        case .chitchat:
-            return buildChitchatResponse(query: query, sentiment: analysis.sentiment)
+        case .statusCheck:   return buildStatusResponse(systemContext: systemContext, topics: analysis.topics)
+        case .troubleshoot:  return buildTroubleshootResponse(systemContext: systemContext, query: query)
+        case .optimize:      return buildOptimizeResponse(systemContext: systemContext)
+        case .explain:       return buildExplainResponse(query: query, systemContext: systemContext)
+        case .predict:       return buildPredictResponse(systemContext: systemContext)
+        case .compare:       return buildCompareResponse(query: query, systemContext: systemContext)
+        case .action:        return buildActionResponse(query: query, systemContext: systemContext)
+        case .chitchat:      return buildChitchatResponse(query: query, sentiment: analysis.sentiment)
         }
     }
 
-    // MARK: - Response Templates
+    // MARK: - Response templates
 
     private func buildStatusResponse(systemContext: SystemContext, topics: [String]) -> String {
         let cpu = systemContext.cpuUsage
         let mem = systemContext.memoryPressure
         let temp = systemContext.temperature
 
-        // Determine focus based on topics
-        let focusCPU = topics.contains(where: { $0.lowercased().contains("cpu") || $0.lowercased().contains("processore") })
-        let focusMemory = topics.contains(where: { $0.lowercased().contains("memoria") || $0.lowercased().contains("ram") })
-        let focusTemp = topics.contains(where: { $0.lowercased().contains("temperatura") || $0.lowercased().contains("caldo") })
+        let focusCPU    = topics.contains(where: { $0.lowercased().contains("cpu") || $0.lowercased().contains("processor") || $0.lowercased().contains("processore") })
+        let focusMemory = topics.contains(where: { $0.lowercased().contains("memory") || $0.lowercased().contains("ram") || $0.lowercased().contains("memoria") })
+        let focusTemp   = topics.contains(where: { $0.lowercased().contains("temp") || $0.lowercased().contains("hot") || $0.lowercased().contains("caldo") })
 
         var parts: [String] = []
 
-        // Overall assessment
         let healthScore = calculateHealthScore(cpu: cpu, memory: mem, temp: temp)
         let healthEmoji = healthScore > 80 ? "✅" : (healthScore > 50 ? "⚠️" : "🔴")
 
         if !focusCPU && !focusMemory && !focusTemp {
-            // General response
-            parts.append("\(healthEmoji) **Stato generale: \(healthDescriptor(healthScore))**")
+            parts.append("\(healthEmoji) **Overall: \(healthDescriptor(healthScore))**")
             parts.append("")
         }
 
         if !focusMemory && !focusTemp || focusCPU {
-            let cpuStatus = cpu > 80 ? "elevato" : (cpu > 50 ? "moderato" : "normale")
+            let cpuStatus = cpu > 80 ? "high" : (cpu > 50 ? "moderate" : "normal")
             parts.append("• **CPU**: \(Int(cpu))% (\(cpuStatus))")
         }
 
         if !focusCPU && !focusTemp || focusMemory {
-            let memStatus = mem > 70 ? "sotto pressione" : (mem > 40 ? "moderata" : "ok")
-            parts.append("• **Memoria**: \(Int(mem))% (\(memStatus))")
+            let memStatus = mem > 70 ? "under pressure" : (mem > 40 ? "moderate" : "ok")
+            parts.append("• **Memory**: \(Int(mem))% (\(memStatus))")
         }
 
         if !focusCPU && !focusMemory || focusTemp {
-            let tempStatus = temp > 85 ? "alta" : (temp > 65 ? "normale" : "bassa")
-            parts.append("• **Temperatura**: \(Int(temp))°C (\(tempStatus))")
+            let tempStatus = temp > 85 ? "high" : (temp > 65 ? "normal" : "low")
+            parts.append("• **Temperature**: \(Int(temp))°C (\(tempStatus))")
         }
 
-        // Add ML prediction if available
-        if let prediction = systemContext.prediction {
-            if prediction.isAnomaly {
-                parts.append("")
-                parts.append("🤖 **ML Detection**: Anomalia rilevata (\(prediction.anomalyType ?? "sconosciuta")) con confidenza \(Int(prediction.confidence * 100))%")
-            }
+        if let prediction = systemContext.prediction, prediction.isAnomaly {
+            parts.append("")
+            parts.append("🤖 **ML detection**: anomaly detected (\(prediction.anomalyType ?? "unknown")) with \(Int(prediction.confidence * 100))% confidence")
         }
 
-        // Add advice if present
         if !systemContext.activeAdvice.isEmpty {
             parts.append("")
-            parts.append("**Suggerimenti attivi:**")
+            parts.append("**Active advice:**")
             for advice in systemContext.activeAdvice.prefix(3) {
                 parts.append("• \(advice)")
             }
@@ -379,18 +349,18 @@ class LocalLLMEngine: ObservableObject {
         let temp = systemContext.temperature
 
         if cpu > 80 {
-            issues.append("CPU al \(Int(cpu))%")
-            solutions.append("Chiudi le app che non usi o controlla Activity Monitor per processi anomali")
+            issues.append("CPU at \(Int(cpu))%")
+            solutions.append("Close apps you aren't using, or check Activity Monitor for runaway processes.")
         }
 
         if mem > 70 {
-            issues.append("Memoria sotto pressione (\(Int(mem))%)")
-            solutions.append("Chiudi tab del browser non necessarie o riavvia app pesanti")
+            issues.append("Memory under pressure (\(Int(mem))%)")
+            solutions.append("Close unused browser tabs or restart memory-heavy apps.")
         }
 
         if temp > 85 {
-            issues.append("Temperatura elevata (\(Int(temp))°C)")
-            solutions.append("Migliora la ventilazione o riduci il carico di lavoro")
+            issues.append("Elevated temperature (\(Int(temp))°C)")
+            solutions.append("Improve ventilation around the Mac or reduce the workload.")
         }
 
         if !systemContext.anomalies.isEmpty {
@@ -399,23 +369,23 @@ class LocalLLMEngine: ObservableObject {
 
         if issues.isEmpty {
             return """
-            🔍 **Diagnostica completata**
+            🔍 **Diagnosis complete**
 
-            Non ho trovato problemi evidenti. Il sistema sembra funzionare normalmente.
+            I didn't find any obvious problems. The system looks normal.
 
-            Se riscontri lentezza, potrebbe essere dovuto a:
-            • Un'app specifica (controlla Activity Monitor)
-            • Disco pieno o frammentato
-            • Problemi di rete
+            If it still feels slow, it could be:
+            • A specific app (check Activity Monitor)
+            • A nearly-full or fragmented disk
+            • Network problems
             """
         }
 
-        var response = "🔧 **Problemi rilevati:**\n\n"
+        var response = "🔧 **Issues detected:**\n\n"
         for issue in issues {
             response += "• \(issue)\n"
         }
 
-        response += "\n**Soluzioni suggerite:**\n\n"
+        response += "\n**Suggested fixes:**\n\n"
         for (i, solution) in solutions.enumerated() {
             response += "\(i + 1). \(solution)\n"
         }
@@ -427,26 +397,26 @@ class LocalLLMEngine: ObservableObject {
         var suggestions: [String] = []
 
         if systemContext.memoryPressure > 50 {
-            suggestions.append("**Libera memoria**: Chiudi app in background inutilizzate")
+            suggestions.append("**Free up memory**: close background apps you aren't using")
         }
 
         if systemContext.cpuUsage > 40 {
-            suggestions.append("**Riduci carico CPU**: Identifica processi pesanti in Activity Monitor")
+            suggestions.append("**Reduce CPU load**: identify heavy processes in Activity Monitor")
         }
 
         if systemContext.temperature > 70 {
-            suggestions.append("**Raffredda il Mac**: Migliora ventilazione o usa una base di raffreddamento")
+            suggestions.append("**Cool the Mac**: improve airflow or use a cooling pad")
         }
 
-        suggestions.append("**Manutenzione**: Riavvia il Mac periodicamente per liberare risorse")
-        suggestions.append("**Storage**: Mantieni almeno 20GB liberi sul disco")
+        suggestions.append("**Maintenance**: restart the Mac periodically to free up resources")
+        suggestions.append("**Storage**: keep at least 20 GB free on the disk")
 
         return """
-        ⚡ **Suggerimenti per ottimizzare:**
+        ⚡ **Optimization suggestions:**
 
         \(suggestions.map { "• \($0)" }.joined(separator: "\n"))
 
-        💡 **Tip**: L'ottimizzazione migliore è spesso chiudere ciò che non serve!
+        💡 **Tip**: the best optimization is usually closing what you don't need.
         """
     }
 
@@ -457,102 +427,104 @@ class LocalLLMEngine: ObservableObject {
             return """
             📚 **CPU (Central Processing Unit)**
 
-            La CPU è il "cervello" del Mac. L'utilizzo indica quanto sta lavorando.
+            The CPU is the Mac's brain. The usage figure shows how hard it's working.
 
-            • **0-30%**: Idle, normale per uso leggero
-            • **30-60%**: Uso moderato (navigazione, documenti)
-            • **60-80%**: Carico pesante (video editing, compilazione)
-            • **80-100%**: Massimo carico, possibile rallentamento
+            • **0–30%**: idle, normal for light use
+            • **30–60%**: moderate (browsing, documents)
+            • **60–80%**: heavy load (video editing, compiling)
+            • **80–100%**: maxed out — things may slow down
 
-            Attualmente: **\(Int(systemContext.cpuUsage))%**
+            Right now: **\(Int(systemContext.cpuUsage))%**
             """
         }
 
-        if lowercased.contains("memoria") || lowercased.contains("ram") || lowercased.contains("pressure") {
+        if lowercased.contains("memory") || lowercased.contains("ram") || lowercased.contains("pressure")
+            || lowercased.contains("memoria") {
             return """
-            📚 **Memory Pressure**
+            📚 **Memory pressure**
 
-            Indica quanto il sistema sta "faticando" a gestire la memoria.
+            How hard the system is working to manage memory.
 
-            • **Verde (0-50%)**: Memoria abbondante
-            • **Giallo (50-80%)**: Compressione attiva, normale
-            • **Rosso (80-100%)**: Swap su disco, rallentamento
+            • **Green (0–50%)**: plenty of memory
+            • **Yellow (50–80%)**: compression active — normal
+            • **Red (80–100%)**: swapping to disk — things slow down
 
-            Attualmente: **\(Int(systemContext.memoryPressure))%**
+            Right now: **\(Int(systemContext.memoryPressure))%**
 
-            macOS usa la memoria in modo intelligente: la "memoria usata" alta non è un problema finché la pressure è bassa.
+            macOS manages memory smartly: high "memory used" isn't a problem as long as pressure stays low.
             """
         }
 
-        if lowercased.contains("temperatura") || lowercased.contains("temp") {
+        if lowercased.contains("temperature") || lowercased.contains("temp")
+            || lowercased.contains("temperatura") || lowercased.contains("caldo") {
             return """
-            📚 **Temperatura CPU**
+            📚 **CPU temperature**
 
-            Apple Silicon è progettato per funzionare fino a ~100°C con throttling.
+            Apple Silicon is designed to run up to ~100°C with thermal throttling.
 
-            • **< 50°C**: Idle o carico leggero
-            • **50-75°C**: Uso normale
-            • **75-95°C**: Carico pesante, normale
-            • **> 95°C**: Thermal throttling attivo
+            • **< 50°C**: idle or light load
+            • **50–75°C**: normal use
+            • **75–95°C**: heavy load — normal
+            • **> 95°C**: thermal throttling kicks in
 
-            Attualmente: **\(Int(systemContext.temperature))°C**
+            Right now: **\(Int(systemContext.temperature))°C**
 
-            I Mac senza ventola (Air) raggiungono temperature più alte.
+            Fanless Macs (Air) reach higher temperatures.
             """
         }
 
         return """
-        🤔 Non sono sicuro di cosa vuoi che ti spieghi.
+        🤔 I'm not sure what to explain.
 
-        Posso spiegarti:
-        • **CPU** e utilizzo processore
-        • **Memoria** e memory pressure
-        • **Temperatura** e thermal throttling
+        I can explain:
+        • **CPU** and processor usage
+        • **Memory** and memory pressure
+        • **Temperature** and thermal throttling
 
-        Prova: "Spiega cosa significa memory pressure"
+        Try: "Explain what memory pressure means."
         """
     }
 
     private func buildPredictResponse(systemContext: SystemContext) -> String {
         guard let prediction = systemContext.prediction else {
             return """
-            🔮 **Previsione non disponibile**
+            🔮 **Prediction not available**
 
-            Il modello ML non è ancora stato addestrato con i tuoi dati.
+            The ML model hasn't been trained on your data yet.
 
-            Continua a usare smol per raccogliere dati e poi potrai:
-            1. Addestrare il modello nel tab AI → Insights
-            2. Ottenere previsioni personalizzate sul tuo Mac
+            Keep using smol to collect samples, then:
+            1. Train the model in AI → Insights
+            2. Get predictions tailored to your Mac
             """
         }
 
         return """
-        🔮 **Previsione ML**
+        🔮 **ML prediction**
 
-        Basandomi sui pattern appresi dal tuo utilizzo:
+        Based on the patterns learned from your usage:
 
-        • **CPU prevista**: ~\(Int(prediction.predictedCPU))%
-        • **Memoria prevista**: ~\(Int(prediction.predictedMemory))%
-        • **Temperatura prevista**: ~\(Int(prediction.predictedTemp))°C
+        • **Predicted CPU**: ~\(Int(prediction.predictedCPU))%
+        • **Predicted memory**: ~\(Int(prediction.predictedMemory))%
+        • **Predicted temperature**: ~\(Int(prediction.predictedTemp))°C
 
-        **Stato**: \(prediction.isAnomaly ? "⚠️ Anomalia rilevata" : "✅ Comportamento normale")
-        **Confidenza**: \(Int(prediction.confidence * 100))%
+        **Status**: \(prediction.isAnomaly ? "⚠️ anomaly detected" : "✅ normal behaviour")
+        **Confidence**: \(Int(prediction.confidence * 100))%
 
-        \(prediction.isAnomaly && prediction.anomalyType != nil ? "Tipo: \(prediction.anomalyType!)" : "")
+        \(prediction.isAnomaly ? (prediction.anomalyType.map { "Type: \($0)" } ?? "") : "")
         """
     }
 
     private func buildCompareResponse(query: String, systemContext: SystemContext) -> String {
         return """
-        📊 **Confronto attuale**
+        📊 **Snapshot vs. typical**
 
-        | Metrica | Attuale | Tipico | Stato |
-        |---------|---------|--------|-------|
-        | CPU | \(Int(systemContext.cpuUsage))% | 20-40% | \(systemContext.cpuUsage > 50 ? "⬆️" : "✅") |
-        | Memoria | \(Int(systemContext.memoryPressure))% | 30-50% | \(systemContext.memoryPressure > 60 ? "⬆️" : "✅") |
-        | Temp | \(Int(systemContext.temperature))°C | 45-65°C | \(systemContext.temperature > 75 ? "⬆️" : "✅") |
+        | Metric | Now | Typical | Status |
+        |--------|-----|---------|--------|
+        | CPU | \(Int(systemContext.cpuUsage))% | 20–40% | \(systemContext.cpuUsage > 50 ? "⬆️" : "✅") |
+        | Memory | \(Int(systemContext.memoryPressure))% | 30–50% | \(systemContext.memoryPressure > 60 ? "⬆️" : "✅") |
+        | Temp | \(Int(systemContext.temperature))°C | 45–65°C | \(systemContext.temperature > 75 ? "⬆️" : "✅") |
 
-        Per confronti più dettagliati, specifica cosa vuoi confrontare!
+        For more detailed comparisons, tell me what to compare.
         """
     }
 
@@ -561,54 +533,54 @@ class LocalLLMEngine: ObservableObject {
 
         if lowercased.contains("activity monitor") || lowercased.contains("monitoraggio attività") {
             return """
-            📱 **Apertura Activity Monitor**
+            📱 **Open Activity Monitor**
 
-            Puoi aprirlo in diversi modi:
-            1. **Spotlight**: Cmd+Spazio → "Activity Monitor"
-            2. **Finder**: Applicazioni → Utility → Monitoraggio Attività
-            3. **Tramite smol**: Clicca l'azione nei consigli
+            A few ways to get there:
+            1. **Spotlight**: ⌘+Space → "Activity Monitor"
+            2. **Finder**: Applications → Utilities → Activity Monitor
+            3. **Through smol**: click the action in the advice card
 
-            Vuoi che lo apra per te?
+            Want me to open it for you?
             """
         }
 
         return """
-        🎬 **Azioni disponibili**
+        🎬 **Available actions**
 
-        Posso aiutarti con:
-        • Aprire Activity Monitor
-        • Mostrarti processi che usano molte risorse
-        • Generare un report del sistema
+        I can help you:
+        • Open Activity Monitor
+        • Show processes using the most resources
+        • Generate a system report
 
-        Cosa vuoi fare?
+        What would you like to do?
         """
     }
 
     private func buildChitchatResponse(query: String, sentiment: Double) -> String {
         if sentiment < -0.3 {
             return """
-            Mi dispiace che tu stia avendo problemi! 😟
+            Sorry you're running into trouble. 😟
 
-            Dimmi di più su cosa sta succedendo e cercherò di aiutarti.
+            Tell me what's happening and I'll try to help.
 
-            Prova a chiedermi:
-            • "Perché il Mac è lento?"
-            • "Come sta il sistema?"
-            • "Cosa dovrei ottimizzare?"
+            Try asking:
+            • "Why is the Mac slow?"
+            • "How is the system doing?"
+            • "What should I optimize?"
             """
         }
 
         return """
-        Ciao! 👋 Sono l'assistente AI di smol.
+        Hi! 👋 I'm smol's AI assistant.
 
-        Posso aiutarti con:
-        • 📊 **Stato sistema**: "Come sta il Mac?"
-        • 🔧 **Problemi**: "Perché è lento?"
-        • ⚡ **Ottimizzazione**: "Come posso velocizzare?"
-        • 📚 **Spiegazioni**: "Cos'è la memory pressure?"
-        • 🔮 **Previsioni**: "Prevedi problemi?"
+        I can help with:
+        • 📊 **System status**: "How is the Mac doing?"
+        • 🔧 **Problems**: "Why is it slow?"
+        • ⚡ **Optimization**: "How can I speed it up?"
+        • 📚 **Explanations**: "What is memory pressure?"
+        • 🔮 **Predictions**: "Forecast any problems?"
 
-        Cosa vuoi sapere?
+        What do you want to know?
         """
     }
 
@@ -631,15 +603,22 @@ class LocalLLMEngine: ObservableObject {
 
     private func healthDescriptor(_ score: Int) -> String {
         switch score {
-        case 90...100: return "Eccellente"
-        case 70..<90: return "Buono"
-        case 50..<70: return "Moderato"
-        case 30..<50: return "Problematico"
-        default: return "Critico"
+        case 90...100: return "Excellent"
+        case 70..<90:  return "Good"
+        case 50..<70:  return "Moderate"
+        case 30..<50:  return "Poor"
+        default:       return "Critical"
         }
     }
 
-    // MARK: - Context Management
+    // MARK: - Context persistence
+
+    private var contextFileURL: URL? {
+        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        return base.appendingPathComponent("smol/conversation_context.json")
+    }
 
     private func addToContext(role: String, content: String, sentiment: Double?, topics: [String]) {
         let item = ContextItem(
@@ -652,7 +631,6 @@ class LocalLLMEngine: ObservableObject {
 
         conversationContext.append(item)
 
-        // Keep only the last N items
         if conversationContext.count > maxContextItems {
             conversationContext.removeFirst(conversationContext.count - maxContextItems)
         }
@@ -661,24 +639,20 @@ class LocalLLMEngine: ObservableObject {
     }
 
     private func saveContext() {
-        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("smol/conversation_context.json")
-
+        guard let url = contextFileURL else { return }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-
         if let data = try? JSONEncoder().encode(conversationContext) {
             try? data.write(to: url)
         }
     }
 
     private func loadContext() {
-        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("smol/conversation_context.json")
-
-        if let data = try? Data(contentsOf: url),
-           let context = try? JSONDecoder().decode([ContextItem].self, from: data) {
-            conversationContext = context
+        guard let url = contextFileURL,
+              let data = try? Data(contentsOf: url),
+              let context = try? JSONDecoder().decode([ContextItem].self, from: data) else {
+            return
         }
+        conversationContext = context
     }
 
     func clearContext() {

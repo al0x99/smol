@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test (macOS)
+    # smol targets macOS 26 (Tahoe) and uses FoundationModels, so the
+    # runner needs Xcode 26+. Pin once GitHub publishes a stable image
+    # for it; until then macos-latest gives us the newest Xcode available.
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Select latest Xcode 26 if installed
+        run: |
+          if ls /Applications | grep -q '^Xcode_26'; then
+            sudo xcode-select -s "/Applications/$(ls /Applications | grep '^Xcode_26' | sort -V | tail -1)/Contents/Developer"
+            xcodebuild -version
+          fi
+
+      - name: Build (Debug)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project smol.xcodeproj \
+            -scheme smol \
+            -configuration Debug \
+            -derivedDataPath build/ci \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build \
+          | tee build.log
+
+      - name: Fail on new warnings
+        run: |
+          # Surface every Swift/Clang warning, drop the harmless AppIntents one.
+          if grep -E 'warning:|error:' build.log \
+              | grep -v appintentsmetadataprocessor \
+              | grep -v '^$'; then
+            echo "::error::Build produced warnings or errors"
+            exit 1
+          fi
+
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project smol.xcodeproj \
+            -scheme smol \
+            -configuration Debug \
+            -derivedDataPath build/ci \
+            -only-testing:smolTests \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            test

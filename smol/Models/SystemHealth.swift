@@ -24,9 +24,9 @@ enum SystemHealth: Equatable {
 
     var description: String {
         switch self {
-        case .healthy: return "Sistema OK"
-        case .warning(let reason): return "Attenzione: \(reason)"
-        case .critical(let reason): return "Critico: \(reason)"
+        case .healthy: return "System healthy"
+        case .warning(let reason): return "Warning: \(reason)"
+        case .critical(let reason): return "Critical: \(reason)"
         }
     }
 }

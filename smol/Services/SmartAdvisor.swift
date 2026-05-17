@@ -40,7 +40,7 @@ class SmartAdvisor: ObservableObject {
     private var cpuHistory: [AIDataPoint] = []
     private var memoryHistory: [AIDataPoint] = []
     private var tempHistory: [AIDataPoint] = []
-    private let maxHistorySize = 300 // 10 minuti a 2s intervallo
+    private let maxHistorySize = 300 // 10 minutes at 2-second interval
 
     // MARK: - Public API
 
@@ -132,7 +132,7 @@ class SmartAdvisor: ObservableObject {
 
             newAnomalies.append(AIAnomaly(
                 type: anomalyType,
-                description: "ML: \(prediction.anomalyType?.rawValue ?? "Anomalia") - Valori previsti: CPU \(Int(prediction.predictedCPU))%, Mem \(Int(prediction.predictedMemory))%, Temp \(Int(prediction.predictedTemp))°C",
+                description: "ML: \(prediction.anomalyType?.rawValue ?? "Anomaly") — Expected values: CPU \(Int(prediction.predictedCPU))%, Mem \(Int(prediction.predictedMemory))%, Temp \(Int(prediction.predictedTemp))°C",
                 detectedAt: Date(),
                 confidence: prediction.confidence,
                 relatedMetric: metric,
@@ -322,12 +322,11 @@ class SmartAdvisor: ObservableObject {
 
         // CPU very high
         if usage > 90 {
-            // Find the culprit process
             if let topProcess = processes.max(by: { $0.cpuPercent < $1.cpuPercent }) {
                 advice.append(AIAdvice(
                     type: .performance,
-                    title: "CPU al \(Int(usage))%",
-                    description: "\(topProcess.name) sta usando \(Int(topProcess.cpuPercent))% CPU. Potrebbe rallentare il sistema.",
+                    title: "CPU at \(Int(usage))%",
+                    description: "\(topProcess.name) is using \(Int(topProcess.cpuPercent))% CPU. It may be slowing the system down.",
                     severity: .critical,
                     action: .terminateProcess(pid: topProcess.id, name: topProcess.name),
                     timestamp: Date()
@@ -336,20 +335,20 @@ class SmartAdvisor: ObservableObject {
         } else if usage > 70 {
             advice.append(AIAdvice(
                 type: .performance,
-                title: "CPU elevata",
-                description: "Uso CPU al \(Int(usage))%. Il sistema sta lavorando intensamente.",
+                title: "Elevated CPU",
+                description: "CPU at \(Int(usage))%. The system is under heavy load.",
                 severity: .warning,
                 action: .openActivityMonitor,
                 timestamp: Date()
             ))
         }
 
-        // CPU trend increasing
+        // CPU trend rising
         if let trend = calculateTrend(cpuHistory, windowMinutes: 2), trend > 5 {
             advice.append(AIAdvice(
                 type: .performance,
-                title: "CPU in aumento",
-                description: "L'uso CPU è aumentato del \(Int(trend))% negli ultimi 2 minuti.",
+                title: "CPU rising",
+                description: "CPU usage rose by \(Int(trend))% in the last 2 minutes.",
                 severity: .info,
                 action: nil,
                 timestamp: Date()
@@ -366,8 +365,8 @@ class SmartAdvisor: ObservableObject {
         if pressure > 80 {
             advice.append(AIAdvice(
                 type: .memory,
-                title: "Memoria in pressione critica",
-                description: "Memory pressure al \(Int(pressure))%. macOS sta comprimendo memoria attivamente. Chiudi app non necessarie.",
+                title: "Memory under critical pressure",
+                description: "Memory pressure at \(Int(pressure))%. macOS is actively compressing memory. Close apps you don't need.",
                 severity: .critical,
                 action: .openActivityMonitor,
                 timestamp: Date()
@@ -375,8 +374,8 @@ class SmartAdvisor: ObservableObject {
         } else if pressure > 50 {
             advice.append(AIAdvice(
                 type: .memory,
-                title: "Memoria sotto pressione",
-                description: "Memory pressure al \(Int(pressure))%. Il sistema sta gestendo la memoria attivamente.",
+                title: "Memory under pressure",
+                description: "Memory pressure at \(Int(pressure))%. The system is actively managing memory.",
                 severity: .warning,
                 action: nil,
                 timestamp: Date()
@@ -389,8 +388,8 @@ class SmartAdvisor: ObservableObject {
             if swapGB > 2 {
                 advice.append(AIAdvice(
                     type: .memory,
-                    title: "Swap elevato: \(String(format: "%.1f", swapGB)) GB",
-                    description: "Il sistema sta usando il disco come memoria. Questo rallenta significativamente le prestazioni.",
+                    title: "Heavy swap: \(String(format: "%.1f", swapGB)) GB",
+                    description: "The system is using disk as memory. This significantly hurts performance.",
                     severity: .critical,
                     action: .openActivityMonitor,
                     timestamp: Date()
@@ -398,8 +397,8 @@ class SmartAdvisor: ObservableObject {
             } else if swapGB > 0.5 {
                 advice.append(AIAdvice(
                     type: .memory,
-                    title: "Swap in uso",
-                    description: "\(String(format: "%.1f", swapGB)) GB di swap attivo. Considera chiudere alcune app.",
+                    title: "Swap in use",
+                    description: "\(String(format: "%.1f", swapGB)) GB of swap active. Consider closing some apps.",
                     severity: .warning,
                     action: nil,
                     timestamp: Date()
@@ -407,12 +406,12 @@ class SmartAdvisor: ObservableObject {
             }
         }
 
-        // Memory leak detection (consistently increasing trend)
+        // Memory-leak detection (steady upward trend)
         if let trend = calculateTrend(memoryHistory, windowMinutes: 5), trend > 10 {
             advice.append(AIAdvice(
                 type: .memory,
-                title: "Possibile memory leak",
-                description: "La pressione memoria è aumentata costantemente del \(Int(trend))% in 5 minuti. Un'app potrebbe avere un memory leak.",
+                title: "Possible memory leak",
+                description: "Memory pressure has steadily increased by \(Int(trend))% over 5 minutes. An app may be leaking memory.",
                 severity: .warning,
                 action: .openActivityMonitor,
                 timestamp: Date()
@@ -429,8 +428,8 @@ class SmartAdvisor: ObservableObject {
         if temp > 95 {
             advice.append(AIAdvice(
                 type: .temperature,
-                title: "Temperatura critica: \(Int(temp))°C",
-                description: "Il Mac potrebbe andare in throttling termico. Riduci il carico di lavoro o migliora la ventilazione.",
+                title: "Critical temperature: \(Int(temp))°C",
+                description: "The Mac may thermally throttle. Reduce the workload or improve ventilation.",
                 severity: .critical,
                 action: nil,
                 timestamp: Date()
@@ -438,8 +437,8 @@ class SmartAdvisor: ObservableObject {
         } else if temp > 85 {
             advice.append(AIAdvice(
                 type: .temperature,
-                title: "Temperatura elevata: \(Int(temp))°C",
-                description: "La CPU si sta scaldando. Normale sotto carico intenso.",
+                title: "Elevated temperature: \(Int(temp))°C",
+                description: "The CPU is warming up. Normal under heavy load.",
                 severity: .warning,
                 action: nil,
                 timestamp: Date()
@@ -450,20 +449,20 @@ class SmartAdvisor: ObservableObject {
         if temp > 80 && cpuUsage < 30 {
             advice.append(AIAdvice(
                 type: .temperature,
-                title: "Temperatura anomala",
-                description: "Temperatura \(Int(temp))°C con CPU al \(Int(cpuUsage))%. Potrebbe esserci un problema di ventilazione o processo nascosto.",
+                title: "Anomalous temperature",
+                description: "Temperature \(Int(temp))°C with CPU at \(Int(cpuUsage))%. Possible ventilation issue or hidden process.",
                 severity: .warning,
                 action: .openActivityMonitor,
                 timestamp: Date()
             ))
         }
 
-        // Trend temperatura in rapido aumento
+        // Temperature rising fast
         if let trend = calculateTrend(tempHistory, windowMinutes: 1), trend > 10 {
             advice.append(AIAdvice(
                 type: .temperature,
-                title: "Temperatura in rapido aumento",
-                description: "La temperatura è aumentata di \(Int(trend))°C nell'ultimo minuto.",
+                title: "Temperature rising rapidly",
+                description: "Temperature rose by \(Int(trend))°C in the last minute.",
                 severity: .info,
                 action: nil,
                 timestamp: Date()
@@ -476,13 +475,13 @@ class SmartAdvisor: ObservableObject {
     private func analyzeProcesses(_ processes: [ProcessInfo]) -> [AIAdvice] {
         var advice: [AIAdvice] = []
 
-        // Processes with very high CPU time (running for a long time)
+        // Long-running processes burning CPU
         for process in processes {
             if process.cpuTimeMinutes > 60 && process.cpuPercent > 20 {
                 advice.append(AIAdvice(
                     type: .process,
-                    title: "\(process.name) attivo da molto",
-                    description: "In esecuzione con \(Int(process.cpuPercent))% CPU da \(Int(process.cpuTimeMinutes)) minuti. Potrebbe essere bloccato.",
+                    title: "\(process.name) long-running",
+                    description: "Running at \(Int(process.cpuPercent))% CPU for \(Int(process.cpuTimeMinutes)) minutes. May be stuck.",
                     severity: process.cpuPercent > 50 ? .warning : .info,
                     action: .terminateProcess(pid: process.id, name: process.name),
                     timestamp: Date()
@@ -490,13 +489,13 @@ class SmartAdvisor: ObservableObject {
             }
         }
 
-        // Troppi processi ad alta CPU
+        // Too many high-CPU processes
         let highCPUProcesses = processes.filter { $0.cpuPercent > 30 }
         if highCPUProcesses.count > 3 {
             advice.append(AIAdvice(
                 type: .process,
-                title: "\(highCPUProcesses.count) processi ad alta CPU",
-                description: "Più processi competono per le risorse CPU. Considera chiudere quelli non necessari.",
+                title: "\(highCPUProcesses.count) high-CPU processes",
+                description: "Multiple processes are competing for the CPU. Consider closing the ones you don't need.",
                 severity: .warning,
                 action: .openActivityMonitor,
                 timestamp: Date()

@@ -209,9 +209,9 @@ class LLMInferenceManager: ObservableObject {
 
     // MARK: - Engines
 
-    private var foundationModelEngine: FoundationModelEngine?
-    private var openRouterEngine: OpenRouterEngine?
-    private var mlxEngine: MLXEngine?
+    private let foundationModelEngine = FoundationModelEngine()
+    private let openRouterEngine = OpenRouterEngine()
+    private let mlxEngine = MLXEngine()
 
     var activeEngine: LLMInferenceEngine? {
         resolveActiveEngine()
@@ -228,14 +228,13 @@ class LLMInferenceManager: ObservableObject {
         case .mlx:
             return mlxEngine
         case .auto:
-            // Priority: FoundationModels (free) -> MLX (local) -> OpenRouter (paid)
-            if foundationModelEngine?.isModelLoaded == true {
+            if foundationModelEngine.isModelLoaded {
                 return foundationModelEngine
             }
-            if isAppleSilicon && mlxEngine?.isModelLoaded == true {
+            if isAppleSilicon && mlxEngine.isModelLoaded {
                 return mlxEngine
             }
-            if openRouterEngine?.isModelLoaded == true {
+            if openRouterEngine.isModelLoaded {
                 return openRouterEngine
             }
             return nil
@@ -245,13 +244,9 @@ class LLMInferenceManager: ObservableObject {
     // MARK: - Initialization
 
     private init() {
-        foundationModelEngine = FoundationModelEngine()
-        openRouterEngine = OpenRouterEngine()
-        mlxEngine = MLXEngine()
-
         // Auto-initialize Foundation Models if available
-        Task {
-            _ = await foundationModelEngine?.initializeIfAvailable()
+        Task { [foundationModelEngine] in
+            _ = await foundationModelEngine.initializeIfAvailable()
         }
     }
 
@@ -282,20 +277,17 @@ class LLMInferenceManager: ObservableObject {
 
     /// Initialize the cloud backend (no model download needed)
     func initializeCloudBackend() async throws {
-        guard let engine = openRouterEngine else {
-            throw LLMError.backendNotAvailable("Cloud engine not initialized")
-        }
-        engine.reloadConfig()
-        guard engine.isModelLoaded else {
+        openRouterEngine.reloadConfig()
+        guard openRouterEngine.isModelLoaded else {
             throw LLMError.apiKeyMissing
         }
     }
 
     /// Unload the current model
     func unloadModel() {
-        foundationModelEngine?.unloadModel()
-        openRouterEngine?.unloadModel()
-        mlxEngine?.unloadModel()
+        foundationModelEngine.unloadModel()
+        openRouterEngine.unloadModel()
+        mlxEngine.unloadModel()
         loadedModel = nil
     }
 
@@ -361,27 +353,25 @@ class LLMInferenceManager: ObservableObject {
         // Fallback chain: FoundationModels -> MLX -> OpenRouter
 
         // 1. Try Apple Foundation Models (free, on-device)
-        if let engine = foundationModelEngine, engine.isModelLoaded {
-            let response = try await engine.generateComplete(prompt: prompt, config: actualConfig)
+        if foundationModelEngine.isModelLoaded {
+            let response = try await foundationModelEngine.generateComplete(prompt: prompt, config: actualConfig)
             isGenerating = false
-            return (response, engine.backendName)
+            return (response, foundationModelEngine.backendName)
         }
 
         // 2. Try MLX (local, on-device)
-        if let engine = mlxEngine, engine.isModelLoaded {
-            let response = try await engine.generateComplete(prompt: prompt, config: actualConfig)
+        if mlxEngine.isModelLoaded {
+            let response = try await mlxEngine.generateComplete(prompt: prompt, config: actualConfig)
             isGenerating = false
-            return (response, engine.backendName)
+            return (response, mlxEngine.backendName)
         }
 
         // 3. Try OpenRouter (cloud, paid)
-        if let engine = openRouterEngine {
-            engine.reloadConfig()
-            if engine.isModelLoaded {
-                let response = try await engine.generateComplete(prompt: prompt, config: actualConfig)
-                isGenerating = false
-                return (response, engine.backendName)
-            }
+        openRouterEngine.reloadConfig()
+        if openRouterEngine.isModelLoaded {
+            let response = try await openRouterEngine.generateComplete(prompt: prompt, config: actualConfig)
+            isGenerating = false
+            return (response, openRouterEngine.backendName)
         }
 
         throw LLMError.modelNotLoaded
@@ -399,22 +389,20 @@ class LLMInferenceManager: ObservableObject {
         }
 
         // Fallback chain
-        if let engine = foundationModelEngine, engine.isModelLoaded {
-            let stream = try await engine.generate(prompt: prompt, config: actualConfig)
-            return (stream, engine.backendName)
+        if foundationModelEngine.isModelLoaded {
+            let stream = try await foundationModelEngine.generate(prompt: prompt, config: actualConfig)
+            return (stream, foundationModelEngine.backendName)
         }
 
-        if let engine = mlxEngine, engine.isModelLoaded {
-            let stream = try await engine.generate(prompt: prompt, config: actualConfig)
-            return (stream, engine.backendName)
+        if mlxEngine.isModelLoaded {
+            let stream = try await mlxEngine.generate(prompt: prompt, config: actualConfig)
+            return (stream, mlxEngine.backendName)
         }
 
-        if let engine = openRouterEngine {
-            engine.reloadConfig()
-            if engine.isModelLoaded {
-                let stream = try await engine.generate(prompt: prompt, config: actualConfig)
-                return (stream, engine.backendName)
-            }
+        openRouterEngine.reloadConfig()
+        if openRouterEngine.isModelLoaded {
+            let stream = try await openRouterEngine.generate(prompt: prompt, config: actualConfig)
+            return (stream, openRouterEngine.backendName)
         }
 
         throw LLMError.modelNotLoaded
@@ -422,9 +410,9 @@ class LLMInferenceManager: ObservableObject {
 
     /// Cancel any in-progress generation across all engines
     func cancelGeneration() {
-        (foundationModelEngine as? FoundationModelEngine)?.cancelGeneration()
-        (openRouterEngine as? OpenRouterEngine)?.cancelGeneration()
-        (mlxEngine as? MLXEngine)?.cancelGeneration()
+        foundationModelEngine.cancelGeneration()
+        openRouterEngine.cancelGeneration()
+        mlxEngine.cancelGeneration()
         isGenerating = false
     }
 
@@ -435,16 +423,16 @@ class LLMInferenceManager: ObservableObject {
 
         switch selectedBackend {
         case .foundationModels:
-            return foundationModelEngine!
+            return foundationModelEngine
         case .openRouter:
-            return openRouterEngine!
+            return openRouterEngine
         case .mlx:
-            return mlxEngine!
+            return mlxEngine
         case .auto:
             if isAppleSilicon && (ext == "safetensors" || ext == "mlx") {
-                return mlxEngine!
+                return mlxEngine
             }
-            return openRouterEngine!
+            return openRouterEngine
         }
     }
 

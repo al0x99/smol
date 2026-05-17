@@ -3,6 +3,7 @@
   <img src="https://img.shields.io/badge/Swift-6-orange?style=flat-square&logo=swift&logoColor=white" />
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" />
   <img src="https://img.shields.io/badge/size-~5MB-green?style=flat-square" />
+  <img src="https://github.com/al0x99/smol/actions/workflows/ci.yml/badge.svg?style=flat-square" />
   <img src="https://img.shields.io/github/stars/al0x99/smol?style=flat-square" />
 </p>
 
@@ -197,11 +198,14 @@ Reading CPU temperature requires direct SMC access via IOKit, which isn't allowe
 
 ## Contributing
 
-PRs welcome. Especially for:
-- Adding apps to the bloatware database (`smol/KnownBloatware.json`)
+PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules.
+Particularly useful contributions:
+- Apps for the bloatware database (`smol/KnownBloatware.json`)
 - Improving anomaly detection algorithms
 - New Apple Silicon sensor support
 - Translations
+
+Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 

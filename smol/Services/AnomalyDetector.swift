@@ -64,7 +64,7 @@ class AnomalyDetector {
         if zScore > anomalyThreshold && lastValue > 80 {
             return AIAnomaly(
                 type: .cpuSpike,
-                description: "CPU spike rilevato: \(Int(lastValue))% (media: \(Int(stats.mean))%)",
+                description: "CPU spike: \(Int(lastValue))% (average: \(Int(stats.mean))%)",
                 detectedAt: Date(),
                 confidence: min(zScore / 4, 1.0),
                 relatedMetric: "CPU Usage",
@@ -87,7 +87,7 @@ class AnomalyDetector {
         if let leakConfidence = detectMemoryLeak(values), leakConfidence > 0.7 {
             return AIAnomaly(
                 type: .memoryLeak,
-                description: "Possibile memory leak: la pressione memoria aumenta costantemente",
+                description: "Possible memory leak: memory pressure keeps rising",
                 detectedAt: Date(),
                 confidence: leakConfidence,
                 relatedMetric: "Memory Pressure",
@@ -149,13 +149,13 @@ class AnomalyDetector {
         guard let lastValue = values.last else { return nil }
 
         // Rapid temperature increase
-        let recentValues = Array(values.suffix(15)) // ~30 secondi
+        let recentValues = Array(values.suffix(15)) // ~30 seconds
         if recentValues.count >= 10 {
             let tempIncrease = (recentValues.last ?? 0) - (recentValues.first ?? 0)
-            if tempIncrease > 15 { // +15°C in 30 secondi
+            if tempIncrease > 15 { // +15°C in 30 seconds
                 return AIAnomaly(
                     type: .thermalThrottling,
-                    description: "Temperatura in rapido aumento: +\(Int(tempIncrease))°C in 30 secondi",
+                    description: "Temperature rising fast: +\(Int(tempIncrease))°C in 30 seconds",
                     detectedAt: Date(),
                     confidence: min(tempIncrease / 25, 1.0),
                     relatedMetric: "Temperature",
@@ -177,12 +177,12 @@ class AnomalyDetector {
     ) -> [AIAnomaly] {
         var anomalies: [AIAnomaly] = []
 
-        // Correlazione CPU-Temperatura anomala
+        // CPU/Temperature correlation anomaly
         if let lastCPU = cpu.last?.value, let lastTemp = temp.last?.value {
             if lastTemp > 80 && lastCPU < 30 {
                 anomalies.append(AIAnomaly(
                     type: .thermalThrottling,
-                    description: "Temperatura elevata (\(Int(lastTemp))°C) con CPU bassa (\(Int(lastCPU))%). Possibile problema hardware o processo nascosto.",
+                    description: "Elevated temperature (\(Int(lastTemp))°C) with low CPU (\(Int(lastCPU))%). Possible hardware issue or hidden process.",
                     detectedAt: Date(),
                     confidence: 0.8,
                     relatedMetric: "Temperature/CPU Correlation",
@@ -192,14 +192,14 @@ class AnomalyDetector {
             }
         }
 
-        // Oscillazione CPU (flip-flop tra alto e basso)
+        // CPU oscillation (flip-flop between high and low)
         if cpu.count >= 20 {
             let recentCPU = Array(cpu.suffix(20))
             let oscillation = detectOscillation(recentCPU.map { $0.value })
             if oscillation > 0.7 {
                 anomalies.append(AIAnomaly(
                     type: .unusualProcess,
-                    description: "Pattern CPU oscillante rilevato. Possibile processo che si attiva/disattiva ripetutamente.",
+                    description: "Oscillating CPU pattern. A process may be repeatedly starting and stopping.",
                     detectedAt: Date(),
                     confidence: oscillation,
                     relatedMetric: "CPU Pattern",
@@ -221,7 +221,7 @@ class AnomalyDetector {
 
         for i in 1..<values.count {
             let diff = values[i] - values[i-1]
-            if abs(diff) > 10 { // Minimo 10% cambio
+            if abs(diff) > 10 { // Minimum 10% change
                 let direction = diff > 0 ? 1 : -1
                 if let prev = previousDirection, prev != direction {
                     changes += 1

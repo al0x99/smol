@@ -21,10 +21,10 @@ class FanMonitor {
     private var helperCheckDone = false
 
     enum FanMode {
-        case system     // Controllo automatico macOS
-        case max        // Fans at maximum
-        case autoMax    // Auto but more aggressive
-        case manual(rpm: Int) // RPM specifico
+        case system            // macOS automatic control
+        case max               // Fans at maximum
+        case autoMax           // Auto but more aggressive
+        case manual(rpm: Int)  // Specific target RPM
     }
 
     struct FanInfo: Identifiable {
@@ -117,17 +117,48 @@ class FanMonitor {
     }
 
     /// Installs the privileged helper via SMAppService (macOS 13+)
-    /// Requires admin authorization
+    /// Requires admin authorization. If the daemon is already registered but
+    /// pending the user's approval in Login Items, opens System Settings.
+    ///
+    /// We always call unregister() before register(). Without that, calling
+    /// register() on an already-enabled service is a no-op and launchd keeps
+    /// the previously-launched helper alive — even after the app bundle's
+    /// helper binary has been replaced by a new build. The unregister/register
+    /// round-trip is the supported way to make launchd pick up a refreshed
+    /// helper.
     @discardableResult
     func installHelper() -> Bool {
-        // Use SMAppService for macOS 13+
         let service = SMAppService.daemon(plistName: "com.smol.fanhelper.plist")
+
+        // If macOS has already registered the daemon and is just waiting for
+        // the user to flip the switch in Login Items, jump straight there.
+        if service.status == .requiresApproval {
+            SmolLog.fan.info("Helper registered but pending user approval — opening System Settings")
+            SMAppService.openSystemSettingsLoginItems()
+            return false
+        }
+
+        // Best-effort unregister so register() actually refreshes the binary.
+        if service.status == .enabled {
+            do {
+                try service.unregister()
+                SmolLog.fan.info("Helper unregistered before re-register (force-refresh binary)")
+            } catch {
+                SmolLog.fan.warning("Helper unregister before refresh failed: \((error as NSError).localizedDescription, privacy: .public)")
+            }
+        }
 
         do {
             try service.register()
-            SmolLog.fan.info("Helper registered successfully")
+            SmolLog.fan.info("Helper registered successfully — status=\(service.status.rawValue, privacy: .public)")
 
-            // Reconnect to the helper
+            // After register() the status is usually .requiresApproval on first
+            // install — bring the user to Login Items so they can enable it.
+            if service.status == .requiresApproval {
+                SMAppService.openSystemSettingsLoginItems()
+            }
+
+            // Reconnect to the helper (will succeed once the user approves)
             xpcConnection?.invalidate()
             xpcConnection = nil
             helperAvailable = false
@@ -135,9 +166,20 @@ class FanMonitor {
             connectToHelper()
             return true
         } catch {
-            SmolLog.fan.error("SMAppService.register failed: \(error.localizedDescription)")
+            let ns = error as NSError
+            SmolLog.fan.error(
+                "SMAppService.register failed: domain=\(ns.domain, privacy: .public) code=\(ns.code, privacy: .public) desc=\(ns.localizedDescription, privacy: .public) status=\(service.status.rawValue, privacy: .public)"
+            )
 
-            // Fallback: try with the old SMJobBless method
+            // Even on "Operation not permitted", the daemon may already be
+            // registered in `.requiresApproval` — surface Login Items so the
+            // user has somewhere to click.
+            if service.status == .requiresApproval {
+                SMAppService.openSystemSettingsLoginItems()
+                return false
+            }
+
+            // Fallback: try with the old SMJobBless method (macOS < 13 only)
             return installHelperLegacy()
         }
     }
@@ -311,7 +353,7 @@ class FanMonitor {
 
     /// Gets info on all fans
     func getAllFans() -> [FanInfo] {
-        // Su Apple Silicon, prova prima l'helper privilegiato
+        // On Apple Silicon, try the privileged helper first.
         if isAppleSilicon {
             // Try XPC helper (real RPM)
             if let helperFans = getAppleSiliconFanInfoViaHelper() {
@@ -562,16 +604,6 @@ class FanMonitor {
     }
 
     private func debugLog(_ message: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let logMessage = "\(timestamp): \(message)\n"
-        let logPath = SmolLog.logPath("smol_app_debug.log")
-        if let handle = FileHandle(forWritingAtPath: logPath) {
-            handle.seekToEndOfFile()
-            handle.write(logMessage.data(using: .utf8)!)
-            handle.closeFile()
-        } else {
-            FileManager.default.createFile(atPath: logPath, contents: logMessage.data(using: .utf8))
-        }
         SmolLog.fan.debug("\(message)")
     }
 
@@ -602,8 +634,15 @@ class FanMonitor {
 
             switch mode {
             case .system:
-                // Mode 0 = auto (disables force mode)
+                // Mode 0 = auto (disables force mode). Before releasing the
+                // force, drive the target RPM down to the fan minimum so the
+                // SMC auto controller takes over with a low target rather
+                // than coasting at whatever max we just commanded. Without
+                // this step the fan stays high for tens of seconds after the
+                // user switches back to Auto.
                 SmolLog.fan.info("Setting fan mode to system (auto)")
+                self.setAllFansToRPM(helper: helper, rpmType: .min)
+
                 let semaphore = DispatchSemaphore(value: 0)
                 helper.setFanMode(mode: 0) { success in
                     SmolLog.fan.info("setFanMode(0) result: \(success)")
@@ -629,6 +668,7 @@ class FanMonitor {
     }
 
     private enum RPMType {
+        case min
         case max
         case autoMax
         case manual(Int)
@@ -662,6 +702,8 @@ class FanMonitor {
 
             let targetRPM: Int
             switch rpmType {
+            case .min:
+                targetRPM = minRPM
             case .max:
                 targetRPM = maxRPM
             case .autoMax:

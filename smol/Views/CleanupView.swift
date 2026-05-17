@@ -8,6 +8,8 @@ struct CleanupView: View {
     @StateObject private var cleanupService = CleanupService()
     @State private var isScanning = false
     @State private var selectedItems: Set<String> = []
+    @State private var showDeleteConfirm = false
+    @State private var lastDeleteError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -146,14 +148,31 @@ struct CleanupView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Button("Delete Selected") {
-                    deleteSelectedItems()
+                Button("Move to Trash…") {
+                    showDeleteConfirm = true
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
             }
         }
         .padding()
+        .confirmationDialog(
+            "Move \(selectedItems.count) item\(selectedItems.count == 1 ? "" : "s") to the Trash?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Move to Trash", role: .destructive) {
+                moveSelectedItemsToTrash()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Items will go to the Trash. You can recover them from there until you empty it.")
+        }
+        .alert("Some items could not be moved", isPresented: .constant(lastDeleteError != nil)) {
+            Button("OK") { lastDeleteError = nil }
+        } message: {
+            Text(lastDeleteError ?? "")
+        }
     }
 
     // MARK: - Actions
@@ -170,17 +189,26 @@ struct CleanupView: View {
         }
     }
 
-    private func deleteSelectedItems() {
+    private func moveSelectedItemsToTrash() {
         let itemsToDelete = cleanupService.findings.filter { selectedItems.contains($0.id) }
+        var failures: [String] = []
 
         for item in itemsToDelete {
+            let url = URL(fileURLWithPath: item.path)
             do {
-                try FileManager.default.removeItem(atPath: item.path)
+                // trashItem keeps items recoverable from the Finder Trash,
+                // unlike removeItem which is permanent.
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
                 cleanupService.findings.removeAll { $0.id == item.id }
                 selectedItems.remove(item.id)
             } catch {
-                SmolLog.cleanup.error("Deletion error \(item.path, privacy: .public): \(error.localizedDescription)")
+                SmolLog.cleanup.error("Trash error \(item.path, privacy: .public): \(error.localizedDescription)")
+                failures.append("• \(item.name): \(error.localizedDescription)")
             }
+        }
+
+        if !failures.isEmpty {
+            lastDeleteError = failures.joined(separator: "\n")
         }
     }
 }
@@ -308,8 +336,10 @@ class CleanupService: ObservableObject {
         ]
 
         for folder in folders {
-            // Skip system folders
-            if systemFolders.contains(where: { folder.contains($0) }) { continue }
+            // Skip system folders. We match by prefix (not substring) so a
+            // user-installed folder that happens to contain "Apple" in its
+            // name — e.g. "MyAppleProject" — is not treated as system-owned.
+            if systemFolders.contains(where: { folder.hasPrefix($0) }) { continue }
 
             let folderPath = appSupportPath + "/" + folder
 

@@ -31,14 +31,26 @@ mkdir -p "$OUT"
 rm -rf "$DD" "$APP_DMG_ROOT" "$DMG"
 
 echo "==> Building Release configuration"
-xcodebuild \
-  -project "$REPO/smol.xcodeproj" \
-  -scheme smol \
-  -configuration Release \
-  -derivedDataPath "$DD" \
-  CODE_SIGN_STYLE=Manual \
-  ${DEV_ID_APPLICATION:+CODE_SIGN_IDENTITY="$DEV_ID_APPLICATION"} \
-  clean build | xcpretty || true
+set -o pipefail
+if command -v xcpretty >/dev/null 2>&1; then
+  xcodebuild \
+    -project "$REPO/smol.xcodeproj" \
+    -scheme smol \
+    -configuration Release \
+    -derivedDataPath "$DD" \
+    CODE_SIGN_STYLE=Manual \
+    ${DEV_ID_APPLICATION:+CODE_SIGN_IDENTITY="$DEV_ID_APPLICATION"} \
+    clean build | xcpretty
+else
+  xcodebuild \
+    -project "$REPO/smol.xcodeproj" \
+    -scheme smol \
+    -configuration Release \
+    -derivedDataPath "$DD" \
+    CODE_SIGN_STYLE=Manual \
+    ${DEV_ID_APPLICATION:+CODE_SIGN_IDENTITY="$DEV_ID_APPLICATION"} \
+    clean build
+fi
 
 [[ -d "$APP_SRC" ]] || { echo "build failed, no .app at $APP_SRC" >&2; exit 1; }
 

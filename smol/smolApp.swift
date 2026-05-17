@@ -18,6 +18,8 @@ struct smolApp: App {
                 Text(systemMonitor.menuBarText)
                     .font(.system(.caption, design: .monospaced))
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(systemMonitor.menuBarAccessibilityLabel)
         }
         .menuBarExtraStyle(.window)
 

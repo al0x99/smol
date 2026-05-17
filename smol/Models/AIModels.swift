@@ -43,14 +43,6 @@ struct AIAdvice: Identifiable {
         case warning = "Warning"
         case critical = "Critical"
 
-        var color: String {
-            switch self {
-            case .info: return "blue"
-            case .warning: return "yellow"
-            case .critical: return "red"
-            }
-        }
-
         var sortOrder: Int {
             switch self {
             case .critical: return 3

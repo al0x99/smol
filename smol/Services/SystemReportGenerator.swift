@@ -1,12 +1,11 @@
 import Foundation
 
-/// System report generator
-/// Creates detailed text reports on system status
+/// System report generator.
+/// Produces detailed text reports about the system's recent state.
 class SystemReportGenerator {
 
     // MARK: - Public API
 
-    /// Generate a comprehensive system report
     func generate(
         cpuHistory: [AIDataPoint],
         memoryHistory: [AIDataPoint],
@@ -48,7 +47,7 @@ class SystemReportGenerator {
         )
     }
 
-    // MARK: - Health Score
+    // MARK: - Health score
 
     private func calculateHealthScore(
         cpuHistory: [AIDataPoint],
@@ -58,28 +57,24 @@ class SystemReportGenerator {
     ) -> Int {
         var score = 100
 
-        // CPU factor (max -25 points)
         if let avgCPU = average(cpuHistory) {
             if avgCPU > 80 { score -= 25 }
             else if avgCPU > 60 { score -= 15 }
             else if avgCPU > 40 { score -= 5 }
         }
 
-        // Memory factor (max -25 points)
         if let avgMemory = average(memoryHistory) {
             if avgMemory > 80 { score -= 25 }
             else if avgMemory > 60 { score -= 15 }
             else if avgMemory > 40 { score -= 5 }
         }
 
-        // Temperature factor (max -25 points)
         if let avgTemp = average(tempHistory) {
             if avgTemp > 90 { score -= 25 }
             else if avgTemp > 80 { score -= 15 }
             else if avgTemp > 70 { score -= 5 }
         }
 
-        // Anomalies factor (max -25 points)
         let criticalAnomalies = anomalies.filter { $0.confidence > 0.8 }.count
         let warningAnomalies = anomalies.filter { $0.confidence > 0.5 && $0.confidence <= 0.8 }.count
         score -= criticalAnomalies * 10
@@ -98,29 +93,32 @@ class SystemReportGenerator {
     private func generateSummary(healthScore: Int, advice: [AIAdvice], anomalies: [AIAnomaly]) -> String {
         let healthStatus: String
         switch healthScore {
-        case 90...100: healthStatus = "eccellente"
-        case 70..<90: healthStatus = "buono"
-        case 50..<70: healthStatus = "moderato"
-        case 30..<50: healthStatus = "problematico"
-        default: healthStatus = "critico"
+        case 90...100: healthStatus = "excellent"
+        case 70..<90:  healthStatus = "good"
+        case 50..<70:  healthStatus = "moderate"
+        case 30..<50:  healthStatus = "poor"
+        default:       healthStatus = "critical"
         }
 
-        var summary = "Stato sistema: \(healthStatus) (punteggio: \(healthScore)/100). "
+        var summary = "System status: \(healthStatus) (score: \(healthScore)/100). "
 
         let criticalCount = advice.filter { $0.severity == .critical }.count
         let warningCount = advice.filter { $0.severity == .warning }.count
 
         if criticalCount > 0 {
-            summary += "\(criticalCount) problema/i critico/i richiede/ono attenzione immediata. "
+            let noun = criticalCount == 1 ? "critical issue requires" : "critical issues require"
+            summary += "\(criticalCount) \(noun) immediate attention. "
         }
         if warningCount > 0 {
-            summary += "\(warningCount) avviso/i da monitorare. "
+            let noun = warningCount == 1 ? "warning" : "warnings"
+            summary += "\(warningCount) \(noun) to monitor. "
         }
-        if anomalies.count > 0 {
-            summary += "\(anomalies.count) anomalia/e rilevata/e. "
+        if !anomalies.isEmpty {
+            let noun = anomalies.count == 1 ? "anomaly detected" : "anomalies detected"
+            summary += "\(anomalies.count) \(noun). "
         }
         if criticalCount == 0 && warningCount == 0 && anomalies.isEmpty {
-            summary += "Nessun problema rilevato."
+            summary += "No problems detected."
         }
 
         return summary
@@ -139,18 +137,18 @@ class SystemReportGenerator {
         else { status = .good }
 
         let content = """
-        L'utilizzo CPU medio nel periodo di monitoraggio è stato del \(Int(avg))%.
-        Il picco massimo ha raggiunto \(Int(max))%, mentre il minimo è stato \(Int(min))%.
-        \(avg > 70 ? "L'utilizzo elevato potrebbe indicare processi intensivi o problemi." : "L'utilizzo è nella norma.")
+        Average CPU usage over the monitoring window was \(Int(avg))%.
+        Peak reached \(Int(max))%, low was \(Int(min))%.
+        \(avg > 70 ? "High usage may point to heavy workloads or stuck processes." : "Usage is within the normal range.")
         """
 
         return SystemReport.ReportSection(
             title: "CPU",
             content: content,
             metrics: [
-                .init(name: "Media", value: "\(Int(avg))%", status: status),
-                .init(name: "Massimo", value: "\(Int(max))%", status: max > 90 ? .critical : .good),
-                .init(name: "Minimo", value: "\(Int(min))%", status: .good)
+                .init(name: "Average", value: "\(Int(avg))%", status: status),
+                .init(name: "Peak",    value: "\(Int(max))%", status: max > 90 ? .critical : .good),
+                .init(name: "Low",     value: "\(Int(min))%", status: .good)
             ]
         )
     }
@@ -165,17 +163,17 @@ class SystemReportGenerator {
         else { status = .good }
 
         let content = """
-        La memory pressure media è stata del \(Int(avg))%.
-        \(avg > 70 ? "Il sistema sta gestendo attivamente la memoria. Considera chiudere app non necessarie." : "La memoria è gestita correttamente.")
-        Picco massimo: \(Int(max))%.
+        Average memory pressure was \(Int(avg))%.
+        \(avg > 70 ? "The system is actively managing memory. Consider closing apps you don't need." : "Memory is being managed normally.")
+        Peak: \(Int(max))%.
         """
 
         return SystemReport.ReportSection(
-            title: "Memoria",
+            title: "Memory",
             content: content,
             metrics: [
-                .init(name: "Pressure Media", value: "\(Int(avg))%", status: status),
-                .init(name: "Pressure Max", value: "\(Int(max))%", status: max > 80 ? .critical : .good)
+                .init(name: "Avg pressure",  value: "\(Int(avg))%", status: status),
+                .init(name: "Peak pressure", value: "\(Int(max))%", status: max > 80 ? .critical : .good)
             ]
         )
     }
@@ -191,18 +189,18 @@ class SystemReportGenerator {
         else { status = .good }
 
         let content = """
-        Temperatura CPU media: \(Int(avg))°C, con picco a \(Int(max))°C.
-        \(avg > 80 ? "Temperature elevate possono causare throttling e ridurre le prestazioni." : "Le temperature sono nella norma.")
-        Range normale per Apple Silicon: 35-75°C a riposo, fino a 100°C sotto carico intenso.
+        Average CPU temperature: \(Int(avg))°C, peak at \(Int(max))°C.
+        \(avg > 80 ? "Sustained high temperatures can trigger throttling and degrade performance." : "Temperatures are within the normal range.")
+        Apple Silicon typical range: 35–75°C at idle, up to 100°C under heavy load.
         """
 
         return SystemReport.ReportSection(
-            title: "Temperatura",
+            title: "Temperature",
             content: content,
             metrics: [
-                .init(name: "Media", value: "\(Int(avg))°C", status: status),
-                .init(name: "Massima", value: "\(Int(max))°C", status: max > 95 ? .critical : (max > 85 ? .warning : .good)),
-                .init(name: "Minima", value: "\(Int(min))°C", status: .good)
+                .init(name: "Average", value: "\(Int(avg))°C", status: status),
+                .init(name: "Peak",    value: "\(Int(max))°C", status: max > 95 ? .critical : (max > 85 ? .warning : .good)),
+                .init(name: "Low",     value: "\(Int(min))°C", status: .good)
             ]
         )
     }
@@ -210,22 +208,22 @@ class SystemReportGenerator {
     private func generateAnomalySection(_ anomalies: [AIAnomaly]) -> SystemReport.ReportSection {
         if anomalies.isEmpty {
             return SystemReport.ReportSection(
-                title: "Anomalie",
-                content: "Nessuna anomalia rilevata nel periodo di monitoraggio.",
+                title: "Anomalies",
+                content: "No anomalies detected during the monitoring window.",
                 metrics: [
-                    .init(name: "Stato", value: "Normale", status: .good)
+                    .init(name: "Status", value: "Normal", status: .good)
                 ]
             )
         }
 
         let descriptions = anomalies.map { "• \($0.type.rawValue): \($0.description)" }
-        let content = "Anomalie rilevate:\n" + descriptions.joined(separator: "\n")
+        let content = "Detected anomalies:\n" + descriptions.joined(separator: "\n")
 
         return SystemReport.ReportSection(
-            title: "Anomalie",
+            title: "Anomalies",
             content: content,
             metrics: [
-                .init(name: "Rilevate", value: "\(anomalies.count)", status: anomalies.count > 2 ? .critical : .warning)
+                .init(name: "Detected", value: "\(anomalies.count)", status: anomalies.count > 2 ? .critical : .warning)
             ]
         )
     }
@@ -233,34 +231,34 @@ class SystemReportGenerator {
     private func generateAdviceSection(_ advice: [AIAdvice]) -> SystemReport.ReportSection {
         if advice.isEmpty {
             return SystemReport.ReportSection(
-                title: "Consigli",
-                content: "Nessun consiglio particolare. Il sistema funziona bene.",
+                title: "Advice",
+                content: "Nothing flagged. The system is running smoothly.",
                 metrics: []
             )
         }
 
         let critical = advice.filter { $0.severity == .critical }
         let warnings = advice.filter { $0.severity == .warning }
-        let info = advice.filter { $0.severity == .info }
+        let info     = advice.filter { $0.severity == .info }
 
         var content = ""
         if !critical.isEmpty {
-            content += "CRITICI:\n" + critical.map { "• \($0.title): \($0.description)" }.joined(separator: "\n") + "\n\n"
+            content += "CRITICAL:\n" + critical.map { "• \($0.title): \($0.description)" }.joined(separator: "\n") + "\n\n"
         }
         if !warnings.isEmpty {
-            content += "AVVISI:\n" + warnings.map { "• \($0.title): \($0.description)" }.joined(separator: "\n") + "\n\n"
+            content += "WARNINGS:\n" + warnings.map { "• \($0.title): \($0.description)" }.joined(separator: "\n") + "\n\n"
         }
         if !info.isEmpty {
             content += "INFO:\n" + info.map { "• \($0.title)" }.joined(separator: "\n")
         }
 
         return SystemReport.ReportSection(
-            title: "Consigli",
+            title: "Advice",
             content: content.trimmingCharacters(in: .whitespacesAndNewlines),
             metrics: [
-                .init(name: "Critici", value: "\(critical.count)", status: critical.isEmpty ? .good : .critical),
-                .init(name: "Avvisi", value: "\(warnings.count)", status: warnings.isEmpty ? .good : .warning),
-                .init(name: "Info", value: "\(info.count)", status: .good)
+                .init(name: "Critical", value: "\(critical.count)", status: critical.isEmpty ? .good : .critical),
+                .init(name: "Warnings", value: "\(warnings.count)", status: warnings.isEmpty ? .good : .warning),
+                .init(name: "Info",     value: "\(info.count)",     status: .good)
             ]
         )
     }
@@ -275,29 +273,24 @@ class SystemReportGenerator {
     ) -> [String] {
         var recommendations: [String] = []
 
-        // CPU recommendations
         if let avgCPU = average(cpuHistory), avgCPU > 70 {
-            recommendations.append("Considera identificare e chiudere i processi che usano molta CPU usando Activity Monitor.")
+            recommendations.append("Identify and close CPU-heavy processes using Activity Monitor.")
         }
 
-        // Memory recommendations
         if let avgMemory = average(memoryHistory), avgMemory > 60 {
-            recommendations.append("Libera memoria chiudendo app non utilizzate o riavviando il browser se ha troppe tab aperte.")
+            recommendations.append("Free up memory by closing apps you don't need, or restart the browser if it has many tabs open.")
         }
 
-        // Temperature recommendations
         if let avgTemp = average(tempHistory), avgTemp > 80 {
-            recommendations.append("Migliora la ventilazione del Mac o riduci il carico di lavoro per abbassare la temperatura.")
+            recommendations.append("Improve ventilation around the Mac or reduce the workload to bring the temperature down.")
         }
 
-        // General recommendations based on advice
         if advice.contains(where: { $0.type == .process }) {
-            recommendations.append("Controlla i processi segnalati - potrebbero essere bloccati o avere memory leak.")
+            recommendations.append("Inspect the flagged processes — they may be stuck or leaking memory.")
         }
 
-        // Default recommendation
         if recommendations.isEmpty {
-            recommendations.append("Continua a monitorare le prestazioni regolarmente per identificare trend negativi.")
+            recommendations.append("Keep an eye on performance over time to catch any negative trends early.")
         }
 
         return recommendations
@@ -305,18 +298,18 @@ class SystemReportGenerator {
 
     // MARK: - Export
 
-    /// Export the report as formatted text
+    /// Export the report as plain text.
     func exportAsText(_ report: SystemReport) -> String {
         var text = """
         ═══════════════════════════════════════
-        REPORT SISTEMA - smol
+        SYSTEM REPORT — smol
         ═══════════════════════════════════════
-        Generato: \(formatDate(report.generatedAt))
+        Generated: \(formatDate(report.generatedAt))
 
-        SOMMARIO
+        SUMMARY
         ────────
         \(report.summary)
-        Punteggio Salute: \(report.healthScore)/100
+        Health score: \(report.healthScore)/100
 
         """
 
@@ -329,7 +322,7 @@ class SystemReportGenerator {
 
             """
             if !section.metrics.isEmpty {
-                text += "Metriche:\n"
+                text += "Metrics:\n"
                 for metric in section.metrics {
                     let statusIcon = metric.status == .good ? "✓" : (metric.status == .warning ? "⚠" : "✗")
                     text += "  \(statusIcon) \(metric.name): \(metric.value)\n"
@@ -339,7 +332,7 @@ class SystemReportGenerator {
 
         text += """
 
-        RACCOMANDAZIONI
+        RECOMMENDATIONS
         ────────────────
         """
         for (i, rec) in report.recommendations.enumerated() {
@@ -349,7 +342,7 @@ class SystemReportGenerator {
         text += """
 
         ═══════════════════════════════════════
-        Report generato da smol - System Monitor
+        Report generated by smol — System Monitor
         """
 
         return text
@@ -359,7 +352,6 @@ class SystemReportGenerator {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .medium
-        formatter.locale = Locale(identifier: "it_IT")
         return formatter.string(from: date)
     }
 }

@@ -11,6 +11,7 @@ import Foundation
 
 // MARK: - AIModels Tests
 
+@MainActor
 struct AIModelsTests {
 
     @Test func testAIDataPointCreation() async throws {
@@ -41,6 +42,7 @@ struct AIModelsTests {
 
 // MARK: - AnomalyDetector Tests
 
+@MainActor
 struct AnomalyDetectorTests {
 
     @Test func testAnomalyDetectorWithEmptyData() async throws {
@@ -207,6 +209,7 @@ struct AnomalyDetectorTests {
 
 // MARK: - NaturalLanguageProcessor Tests
 
+@MainActor
 struct NaturalLanguageProcessorTests {
 
     @Test func testCPUQueryDetection() async throws {
@@ -318,8 +321,8 @@ struct NaturalLanguageProcessorTests {
             anomalies: []
         )
 
-        // Dovrebbe restituire messaggio di aiuto
-        #expect(response.contains("Non ho capito") || response.contains("Prova"))
+        // Help-message fallback (English).
+        #expect(response.contains("didn't quite catch") || response.contains("Try asking"))
     }
 
     @Test func testAnomalyQueryWithAnomalies() async throws {
@@ -365,6 +368,7 @@ struct NaturalLanguageProcessorTests {
 
 // MARK: - SystemReportGenerator Tests
 
+@MainActor
 struct SystemReportGeneratorTests {
 
     @Test func testReportGenerationWithEmptyData() async throws {
@@ -446,13 +450,13 @@ struct SystemReportGeneratorTests {
             anomalies: []
         )
 
-        // Dovrebbe avere sezioni per CPU, Memoria, Temperatura, Anomalie, Consigli
+        // Sections: CPU, Memory, Temperature, Anomalies, Advice
         let sectionTitles = report.sections.map { $0.title }
         #expect(sectionTitles.contains("CPU"))
-        #expect(sectionTitles.contains("Memoria"))
-        #expect(sectionTitles.contains("Temperatura"))
-        #expect(sectionTitles.contains("Anomalie"))
-        #expect(sectionTitles.contains("Consigli"))
+        #expect(sectionTitles.contains("Memory"))
+        #expect(sectionTitles.contains("Temperature"))
+        #expect(sectionTitles.contains("Anomalies"))
+        #expect(sectionTitles.contains("Advice"))
     }
 
     @Test func testReportExportAsText() async throws {
@@ -473,12 +477,11 @@ struct SystemReportGeneratorTests {
 
         let text = generator.exportAsText(report)
 
-        // Il testo esportato dovrebbe contenere elementi chiave
-        #expect(text.contains("REPORT SISTEMA"))
+        #expect(text.contains("SYSTEM REPORT"))
         #expect(text.contains("smol"))
-        #expect(text.contains("SOMMARIO"))
+        #expect(text.contains("SUMMARY"))
         #expect(text.contains("CPU"))
-        #expect(text.contains("RACCOMANDAZIONI"))
+        #expect(text.contains("RECOMMENDATIONS"))
     }
 
     @Test func testReportRecommendationsGenerated() async throws {
@@ -543,6 +546,7 @@ struct SystemReportGeneratorTests {
 
 // MARK: - Integration Tests
 
+@MainActor
 struct AIServicesIntegrationTests {
 
     @Test func testEndToEndAnalysis() async throws {

@@ -362,6 +362,7 @@ struct MenuBarView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Refresh top processes")
             }
 
             ForEach(topProcesses.prefix(3)) { process in
@@ -528,6 +529,7 @@ struct SuspiciousProcessRow: View {
                     .foregroundColor(.red)
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Terminate \(process.name)")
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
@@ -563,6 +565,8 @@ struct FanModeButton: View {
                 .cornerRadius(4)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Fan mode: \(title)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -597,6 +601,8 @@ struct FanRow: View {
                 .foregroundColor(rpmColor)
                 .frame(width: 65, alignment: .trailing)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(fan.name): \(fan.currentRPM) RPM, \(Int(fan.rpmPercent)) percent of max")
     }
 
     private var rpmColor: Color {

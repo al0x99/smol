@@ -83,7 +83,7 @@ struct ProcessesTab: View {
 
             Divider()
 
-            // Tabella processi
+            // Processes table
             Table(filteredProcesses, sortOrder: $sortOrder) {
                 TableColumn("processes.name".localized(localization), value: \.name) { process in
                     HStack {

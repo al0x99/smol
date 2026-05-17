@@ -1,6 +1,28 @@
 import Foundation
 import Security
 
+// MARK: - Input validation
+
+/// Hard caps for XPC-supplied values. Real Macs ship 0–2 fans at most;
+/// no commodity Mac fan tops 10000 RPM. We bound aggressively because this
+/// process runs as root and writes directly to SMC.
+private enum FanLimits {
+    static let maxFanIndex: Int = 7      // SMC keys F0..F7, anything beyond corrupts key strings
+    static let minRPM: Int = 0
+    static let maxRPM: Int = 10000
+    static let validModes: Set<Int> = [0, 1]
+}
+
+@inline(__always)
+private func validIndex(_ index: Int) -> Bool {
+    return index >= 0 && index <= FanLimits.maxFanIndex
+}
+
+@inline(__always)
+private func clampRPM(_ rpm: Int) -> Int {
+    return min(max(rpm, FanLimits.minRPM), FanLimits.maxRPM)
+}
+
 // MARK: - Fan Helper Service
 
 /// XPC service implementation for fan control
@@ -19,6 +41,11 @@ class FanHelperService: NSObject, FanHelperProtocol {
     }
 
     func getFanRPM(index: Int, reply: @escaping (Int) -> Void) {
+        guard validIndex(index) else {
+            NSLog("smolFanHelper: getFanRPM rejected out-of-range index %d", index)
+            reply(0)
+            return
+        }
         let rpm = smc.getFanRPM(index: index)
         NSLog("smolFanHelper: getFanRPM(%d) = %d", index, rpm)
         reply(rpm)
@@ -40,57 +67,64 @@ class FanHelperService: NSObject, FanHelperProtocol {
     }
 
     func setFanRPM(index: Int, rpm: Int, reply: @escaping (Bool) -> Void) {
-        // Log to file directly
-        logToFile("setFanRPM called: index=\(index), rpm=\(rpm)")
-        NSLog("smolFanHelper: setFanRPM(%d, %d)", index, rpm)
+        guard validIndex(index) else {
+            NSLog("smolFanHelper: setFanRPM rejected out-of-range index %d", index)
+            reply(false)
+            return
+        }
+        let safeRPM = clampRPM(rpm)
+        if safeRPM != rpm {
+            NSLog("smolFanHelper: setFanRPM clamped %d to %d (allowed range 0...%d)", rpm, safeRPM, FanLimits.maxRPM)
+        }
+        NSLog("smolFanHelper: setFanRPM(%d, %d)", index, safeRPM)
 
-        // Try to enable force mode (may fail on Apple Silicon)
-        logToFile("Calling setFanForceMode...")
+        // M-series firmware refuses F*Tg writes when the fan is parked
+        // (F*Ac == 0). We get around this by lifting F*Mn, which the
+        // thermal controller is required to honour. The lift is cached
+        // and restored when the caller flips back to auto.
+        let actualRPM = smc.getFanRPM(index: index)
+        if actualRPM == 0 && safeRPM > 0 {
+            NSLog("smolFanHelper: Fan %d parked (Ac=0) — lifting F%dMn to wake", index, index)
+            _ = smc.wakeParkedFan(index: index, rpm: safeRPM)
+        }
+
         let forceOK = smc.setFanForceMode(index: index, forced: true)
-        logToFile("setFanForceMode result: \(forceOK)")
         if !forceOK {
             NSLog("smolFanHelper: Force mode failed for fan %d, trying direct target write anyway", index)
         }
 
-        // Try to set target RPM anyway
-        // On Apple Silicon it may work even without force mode
-        logToFile("Calling setFanTargetRPM...")
-        let setOK = smc.setFanTargetRPM(index: index, rpm: rpm)
-        logToFile("setFanTargetRPM result: \(setOK)")
+        // On Apple Silicon the target write often succeeds even when the
+        // force-mode write was rejected, so we try regardless.
+        let setOK = smc.setFanTargetRPM(index: index, rpm: safeRPM)
 
         if setOK {
-            NSLog("smolFanHelper: Successfully set fan %d to %d RPM", index, rpm)
+            NSLog("smolFanHelper: Successfully set fan %d to %d RPM", index, safeRPM)
         } else {
             NSLog("smolFanHelper: Failed to set fan %d target RPM (SMC write blocked on Apple Silicon?)", index)
         }
 
-        logToFile("Replying with: \(setOK)")
         reply(setOK)
     }
 
-    private func logToFile(_ message: String) {
-        let logPath = "/tmp/smol_helper_debug.log"
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let logMessage = "\(timestamp): smolFanHelper: \(message)\n"
-        if let data = logMessage.data(using: .utf8) {
-            if let handle = FileHandle(forWritingAtPath: logPath) {
-                handle.seekToEndOfFile()
-                handle.write(data)
-                handle.closeFile()
-            } else {
-                FileManager.default.createFile(atPath: logPath, contents: data)
-            }
-        }
-    }
-
     func setFanMode(mode: Int, reply: @escaping (Bool) -> Void) {
+        guard FanLimits.validModes.contains(mode) else {
+            NSLog("smolFanHelper: setFanMode rejected invalid mode %d", mode)
+            reply(false)
+            return
+        }
         NSLog("smolFanHelper: setFanMode(%d)", mode)
 
-        // mode 0 = auto (disable force), mode 1+ = manual
         let count = smc.getFanCount()
         var allOK = true
 
         for i in 0..<count {
+            // Restore the F*Mn we raised during any prior wake-up BEFORE
+            // releasing manual control. Otherwise the auto controller
+            // would inherit our lifted floor and stay at the manual-mode
+            // RPM for tens of seconds while it tried to ramp down.
+            if mode == 0 && smc.hasCachedMinimum(index: i) {
+                _ = smc.restoreFanMinimum(index: i)
+            }
             if !smc.setFanForceMode(index: i, forced: mode != 0) {
                 allOK = false
             }
@@ -102,16 +136,14 @@ class FanHelperService: NSObject, FanHelperProtocol {
     func debugEnumerateKeys(reply: @escaping (String) -> Void) {
         NSLog("smolFanHelper: debugEnumerateKeys() - starting enumeration")
 
-        // Enumerate keys for each fan
         let count = smc.getFanCount()
         for i in 0..<count {
             smc.debugEnumerateFanKeys(index: i)
         }
 
-        // Search all F* keys
         smc.debugSearchFanKeys()
 
-        reply("Check /tmp/smol_helper_debug.log for results")
+        reply("Enumeration complete — see Console log filtered by process com.smol.fanhelper.")
     }
 
     func isFanControlAvailable(reply: @escaping (Bool, String) -> Void) {
@@ -123,8 +155,9 @@ class FanHelperService: NSObject, FanHelperProtocol {
             return
         }
 
-        // On Apple Silicon M4, when fans are at 0 RPM,
-        // the hardware has disabled them and control is not possible
+        // On Apple Silicon the SMC parks fans at 0 RPM when the system
+        // is cool; we still report control as "available" in that case
+        // because writing F0Tg can spin them up from 0.
         var anyFanRunning = false
         for i in 0..<count {
             let rpm = smc.getFanRPM(index: i)
@@ -135,55 +168,20 @@ class FanHelperService: NSObject, FanHelperProtocol {
         }
 
         if !anyFanRunning {
-            NSLog("smolFanHelper: All fans at 0 RPM - hardware has disabled fan control")
-            reply(false, "Le ventole sono state spente dall'hardware (temperatura bassa). Il controllo manuale sarà disponibile quando la temperatura aumenterà e le ventole si riattiveranno.")
+            NSLog("smolFanHelper: All fans at 0 RPM — control will spin them up via F0Tg write")
+            reply(true, "Fans are idle. Manual control is still available — writing a target RPM will spin them up.")
             return
         }
 
-        // Try writing a value to see if control is accepted
+        // Probe by toggling force-mode and immediately restoring.
         let testResult = smc.setFanForceMode(index: 0, forced: true)
-        // Restore immediately
         _ = smc.setFanForceMode(index: 0, forced: false)
 
         if testResult {
-            reply(true, "Fan control disponibile")
+            reply(true, "Fan control available")
         } else {
-            // SMC rejected the write - control not available
-            reply(false, "Il controllo delle ventole non è disponibile su questo Mac. L'hardware Apple Silicon protegge l'accesso SMC in scrittura.")
+            reply(false, "Fan control is not available on this Mac. Apple Silicon firmware is blocking SMC writes.")
         }
-    }
-
-    func testFOFCSequences(index: Int, targetRPM: Int, reply: @escaping (Bool, String) -> Void) {
-        NSLog("smolFanHelper: testFOFCSequences(index=%d, targetRPM=%d)", index, targetRPM)
-        logToFile("testFOFCSequences called: index=\(index), targetRPM=\(targetRPM)")
-
-        let success = smc.testFOFCSequences(index: index, targetRPM: targetRPM)
-
-        let logPath = "/tmp/smol_helper_debug.log"
-
-        if success {
-            reply(true, "SUCCESS! Check \(logPath) for the working sequence.")
-        } else {
-            reply(false, "All sequences failed. Check \(logPath) for details.")
-        }
-    }
-
-    func searchFOFCKeys(reply: @escaping (String) -> Void) {
-        NSLog("smolFanHelper: searchFOFCKeys()")
-        logToFile("searchFOFCKeys called")
-
-        smc.debugSearchFOFCKeys()
-
-        reply("Check /tmp/smol_helper_debug.log for results")
-    }
-
-    func testAlternativeControl(index: Int, targetRPM: Int, reply: @escaping (String) -> Void) {
-        NSLog("smolFanHelper: testAlternativeControl(index=%d, targetRPM=%d)", index, targetRPM)
-        logToFile("testAlternativeControl called: index=\(index), targetRPM=\(targetRPM)")
-
-        let result = smc.testAlternativeFanControl(index: index, targetRPM: targetRPM)
-
-        reply(result)
     }
 }
 
@@ -196,7 +194,6 @@ class FanHelperDelegate: NSObject, NSXPCListenerDelegate {
                   shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
         NSLog("smolFanHelper: New connection request from PID %d", newConnection.processIdentifier)
 
-        // Verify client signature (IMPORTANT for security!)
         guard verifyClientSignature(connection: newConnection) else {
             NSLog("smolFanHelper: Client verification FAILED for PID %d", newConnection.processIdentifier)
             return false
@@ -204,16 +201,13 @@ class FanHelperDelegate: NSObject, NSXPCListenerDelegate {
 
         NSLog("smolFanHelper: Client verified, accepting connection")
 
-        // Configure XPC interface
         newConnection.exportedInterface = NSXPCInterface(with: FanHelperProtocol.self)
         newConnection.exportedObject = FanHelperService()
 
-        // Handler for connection interruption
         newConnection.interruptionHandler = {
             NSLog("smolFanHelper: Connection interrupted")
         }
 
-        // Handler for connection invalidation
         newConnection.invalidationHandler = {
             NSLog("smolFanHelper: Connection invalidated")
         }
@@ -225,23 +219,32 @@ class FanHelperDelegate: NSObject, NSXPCListenerDelegate {
     /// Verify that the client is signed with the same Team ID
     private func verifyClientSignature(connection: NSXPCConnection) -> Bool {
         #if DEBUG
-        // In debug, accept all connections to facilitate development
-        NSLog("smolFanHelper: DEBUG mode - accepting all connections")
+        NSLog("smolFanHelper: DEBUG build — accepting all connections")
         return true
         #else
-        let pid = connection.processIdentifier
-
-        var code: SecCode?
-        let attributes: [String: Any] = [kSecGuestAttributePid as String: pid]
-        let status = SecCodeCopyGuestWithAttributes(nil, attributes as CFDictionary, [], &code)
-
-        guard status == errSecSuccess, let code = code else {
-            NSLog("smolFanHelper: Failed to get SecCode for PID %d: %d", pid, status)
+        // Use the connection's audit_token_t to avoid the PID-recycling TOCTOU
+        // race that affects kSecGuestAttributePid. The audit token is captured
+        // when the kernel routes the XPC message and cannot be spoofed by a
+        // later exec.
+        var auditToken = audit_token_t()
+        if connection.responds(to: NSSelectorFromString("auditToken")) {
+            auditToken = connection.value(forKey: "auditToken") as! audit_token_t
+        } else {
+            NSLog("smolFanHelper: NSXPCConnection has no auditToken — refusing connection")
             return false
         }
 
-        // Verify it is signed with the same Team ID as the helper
-        // Replace JLTQ5V2UX8 with the actual Team ID
+        let tokenData = withUnsafeBytes(of: &auditToken) { Data($0) }
+        var code: SecCode?
+        let attributes: [String: Any] = [kSecGuestAttributeAudit as String: tokenData]
+        let status = SecCodeCopyGuestWithAttributes(nil, attributes as CFDictionary, [], &code)
+
+        guard status == errSecSuccess, let code = code else {
+            NSLog("smolFanHelper: SecCodeCopyGuestWithAttributes failed: %d", status)
+            return false
+        }
+
+        // Designated requirement: same identifier + Team ID, Developer ID signed.
         let requirement = """
             anchor apple generic
             and identifier "com.whitepaper.smol"
@@ -260,7 +263,10 @@ class FanHelperDelegate: NSObject, NSXPCListenerDelegate {
             return false
         }
 
-        let validationResult = SecCodeCheckValidity(code, [], req)
+        // kSecCSCheckAllArchitectures = 1 << 5 — enforces validity for every
+        // slice of a universal binary, not just the running one.
+        let flags = SecCSFlags(rawValue: 1 << 5)
+        let validationResult = SecCodeCheckValidity(code, flags, req)
         if validationResult != errSecSuccess {
             NSLog("smolFanHelper: Client validation failed: %d", validationResult)
             return false
@@ -274,36 +280,13 @@ class FanHelperDelegate: NSObject, NSXPCListenerDelegate {
 
 // MARK: - Entry Point
 
-NSLog("smolFanHelper: Starting version 1.1 with FOFC testing...")
-NSLog("smolFanHelper: Running as UID %d", getuid())
+NSLog("smolFanHelper: Starting (UID %d)", getuid())
 
-// Run FOFC tests at startup
-do {
-    let smc = SMCAccess()
-
-    // First, search for all FOFC-related keys
-    NSLog("smolFanHelper: === STARTUP: Searching for FOFC keys ===")
-    smc.debugSearchFOFCKeys()
-
-    // Then run the exhaustive sequence tests
-    NSLog("smolFanHelper: === STARTUP: Running FOFC sequence tests ===")
-    let success = smc.testFOFCSequences(index: 0, targetRPM: 3000)
-    NSLog("smolFanHelper: FOFC test result: %@", success ? "SUCCESS" : "FAILED")
-
-    // Run alternative control tests (F0Mn/F0Mx constraints)
-    NSLog("smolFanHelper: === STARTUP: Running alternative control tests ===")
-    let altResult = smc.testAlternativeFanControl(index: 0, targetRPM: 3000)
-    NSLog("smolFanHelper: Alternative control result: %@", altResult)
-}
-
-// Create delegate and listener
 let delegate = FanHelperDelegate()
 let listener = NSXPCListener(machServiceName: FanHelperMachServiceName)
 listener.delegate = delegate
 
-// Start listener
 listener.resume()
 NSLog("smolFanHelper: Listening on %@", FanHelperMachServiceName)
 
-// Keep process alive
 RunLoop.current.run()

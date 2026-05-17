@@ -3,151 +3,151 @@
     {
       "name": "CleanMyMac X",
       "processes": ["CleanMyMac", "CleanMyMac X", "CleanMyMac X Helper", "moonlock", "HealthMonitor"],
-      "reason": "Antivirus inutile su Mac - il sistema moonlock usa molta RAM e CPU senza reale beneficio",
+      "reason": "Unnecessary antivirus on Mac — the moonlock service uses substantial RAM and CPU with no real benefit",
       "removal_safe": true
     },
     {
       "name": "Logitech Options+",
       "processes": ["logioptionsplus_updater", "logioptionsplus_agent", "LogiMgr", "LogiOptions"],
-      "reason": "L'updater ha un bug noto che lo fa girare al 70% CPU indefinitamente (anche per mesi!)",
+      "reason": "The updater has a known bug that pins it at 70% CPU indefinitely (sometimes for months)",
       "removal_safe": true
     },
     {
       "name": "Adobe Creative Cloud",
       "processes": ["AdobeIPCBroker", "CCLibrary", "CCXProcess", "Adobe Desktop Service", "AdobeUpdateManager", "AdobeGCClient", "AdobeResourceSynchronizer", "com.adobe.acc.installer"],
-      "reason": "Installa 15+ processi background anche senza app Adobe aperte - usa GB di RAM",
+      "reason": "Installs 15+ background processes even when no Adobe app is open — uses GBs of RAM",
       "removal_safe": false
     },
     {
       "name": "Boom 3D / Boom Audio",
       "processes": ["Boom 3D", "Boom2", "BoomAudio", "BoomDevice"],
-      "reason": "Installa driver audio kernel che possono causare crash e CPU alta",
+      "reason": "Installs kernel-level audio drivers that can cause crashes and high CPU",
       "removal_safe": true
     },
     {
       "name": "McAfee Total Protection",
       "processes": ["McAfee", "MFEFirewall", "Mfecds", "MFEConsole", "McAfeeAntiMalware"],
-      "reason": "Antivirus non necessario su macOS - rallenta significativamente il sistema",
+      "reason": "Antivirus not needed on macOS — significantly slows the system",
       "removal_safe": true
     },
     {
       "name": "Norton Security",
       "processes": ["Norton", "NortonSecurity", "SymDaemon", "NortonAutoProtect", "Nortonlive"],
-      "reason": "Antivirus non necessario su macOS - consuma molte risorse",
+      "reason": "Antivirus not needed on macOS — consumes lots of resources",
       "removal_safe": true
     },
     {
       "name": "Avast Security",
       "processes": ["Avast", "AvastSecurityAgent", "AvastWifiInspector"],
-      "reason": "Antivirus non necessario su macOS - spesso causa rallentamenti",
+      "reason": "Antivirus not needed on macOS — often causes slowdowns",
       "removal_safe": true
     },
     {
       "name": "AVG AntiVirus",
       "processes": ["AVG", "AVGAgent", "avgagent"],
-      "reason": "Antivirus non necessario su macOS",
+      "reason": "Antivirus not needed on macOS",
       "removal_safe": true
     },
     {
       "name": "Kaspersky",
       "processes": ["Kaspersky", "kav", "klnagent"],
-      "reason": "Antivirus non necessario su macOS - molto invasivo",
+      "reason": "Antivirus not needed on macOS — very invasive",
       "removal_safe": true
     },
     {
       "name": "Citrix Workspace",
       "processes": ["Citrix", "AuthManager", "ServiceRecords"],
-      "reason": "Lascia processi residui anche quando non in uso",
+      "reason": "Leaves residual processes running even when not in use",
       "removal_safe": true
     },
     {
       "name": "Wacom Driver",
       "processes": ["WacomTablet", "WacomTouchDriver", "Wacom_Tablet"],
-      "reason": "Driver spesso causa CPU alta anche senza tablet connesso",
+      "reason": "Driver often hits high CPU even with no tablet connected",
       "removal_safe": true
     },
     {
       "name": "Spotify",
       "processes": ["Spotify Helper", "SpotifyWebHelper"],
-      "reason": "I processi helper possono usare molta RAM - non critico",
+      "reason": "Helper processes can use a lot of RAM — not critical",
       "removal_safe": false
     },
     {
       "name": "Microsoft Office",
       "processes": ["Microsoft AU Daemon", "Microsoft Office Licensing", "Microsoft Outlook Database Daemon"],
-      "reason": "Processi background sempre attivi anche senza Office aperto",
+      "reason": "Background processes stay active even when no Office app is open",
       "removal_safe": false
     },
     {
       "name": "Dropbox",
       "processes": ["Dropbox", "Dropbox Helper"],
-      "reason": "Può usare molta CPU durante sincronizzazione",
+      "reason": "Can use a lot of CPU during sync",
       "removal_safe": false
     },
     {
       "name": "Google Drive",
       "processes": ["Google Drive", "Google Drive FS"],
-      "reason": "Usa CPU durante sync - normalmente OK",
+      "reason": "Uses CPU during sync — usually fine",
       "removal_safe": false
     },
     {
       "name": "OneDrive",
       "processes": ["OneDrive", "OneDriveStandaloneUpdater"],
-      "reason": "Updater a volte si blocca",
+      "reason": "Updater occasionally hangs",
       "removal_safe": false
     },
     {
       "name": "Folding@home",
       "processes": ["FAHClient", "FAHControl", "FAHViewer"],
-      "reason": "Progetto di calcolo distribuito - usa CPU intenzionalmente ma può rallentare il Mac",
+      "reason": "Distributed-computing project — burns CPU intentionally but slows the Mac",
       "removal_safe": true
     },
     {
       "name": "WiFi Signal",
       "processes": ["WiFi Signal", "WiFiSignal"],
-      "reason": "App semplice che a volte usa troppe risorse per la sua funzione",
+      "reason": "Simple app that occasionally uses more resources than its function warrants",
       "removal_safe": true
     },
     {
       "name": "MacKeeper",
       "processes": ["MacKeeper", "MacKeeperAgent"],
-      "reason": "Notoriamente aggressivo e difficile da rimuovere - considerato PUP (Potentially Unwanted Program)",
+      "reason": "Notoriously aggressive and hard to remove — classified as PUP (Potentially Unwanted Program)",
       "removal_safe": true
     },
     {
       "name": "Parallels Desktop",
       "processes": ["prl_", "Parallels"],
-      "reason": "Lascia molti processi attivi anche senza VM in esecuzione",
+      "reason": "Leaves many processes active even when no VM is running",
       "removal_safe": false
     },
     {
       "name": "VMware Fusion",
       "processes": ["vmware", "vmnet", "vmware-vmx"],
-      "reason": "Servizi di rete attivi anche senza VM",
+      "reason": "Network services stay active even when no VM is running",
       "removal_safe": false
     },
     {
       "name": "Docker Desktop",
       "processes": ["Docker", "com.docker", "docker-hyperkit", "vpnkit"],
-      "reason": "Usa molta RAM per la VM Linux - normale ma pesante",
+      "reason": "Uses a lot of RAM for the Linux VM — normal but heavy",
       "removal_safe": false
     },
     {
       "name": "Razer Synapse",
       "processes": ["Razer", "RzDeviceEngine", "RazerUpdater"],
-      "reason": "Software gaming che spesso usa più risorse del necessario",
+      "reason": "Gaming software that often uses more resources than necessary",
       "removal_safe": true
     },
     {
       "name": "SteelSeries GG",
       "processes": ["SteelSeries", "sonar", "GG"],
-      "reason": "Software periferiche gaming - processi background multipli",
+      "reason": "Gaming-peripheral software — multiple background processes",
       "removal_safe": true
     },
     {
       "name": "Corsair iCUE",
       "processes": ["iCUE", "Corsair"],
-      "reason": "Software RGB che gira sempre in background",
+      "reason": "RGB control software that runs continuously in the background",
       "removal_safe": true
     }
   ]

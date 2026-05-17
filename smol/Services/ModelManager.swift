@@ -355,6 +355,7 @@ private class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
 
 // MARK: - Model Types
 
+/// A downloadable on-device LLM (MLX or GGUF) and its metadata.
 struct LLMModel: Identifiable, Equatable {
     let id: String
     let name: String
@@ -416,6 +417,8 @@ struct LLMModel: Identifiable, Equatable {
     }
 }
 
+/// On-disk format of a downloaded model. GGUF runs via llama.cpp / MLX
+/// conversion; MLX is the Apple Silicon-native `safetensors` layout.
 enum ModelFormat: String, CaseIterable {
     case gguf = "GGUF"
     case mlx = "MLX"
@@ -442,6 +445,7 @@ enum ModelFormat: String, CaseIterable {
     }
 }
 
+/// Rough size bucket shown in the model picker.
 enum ModelSize: String, CaseIterable {
     case tiny = "Tiny"
     case small = "Small"
@@ -458,12 +462,14 @@ enum ModelSize: String, CaseIterable {
     }
 }
 
+/// Hardware requirements advertised for a model.
 struct ModelRequirements {
     let minRAM: Int       // GB
     let recommendedRAM: Int  // GB
-    let estimatedSpeed: Int  // tokens/sec su M1/M2
+    let estimatedSpeed: Int  // tokens/sec on M1/M2
 }
 
+/// Tags advertised on a model card.
 enum ModelCapability: String, CaseIterable {
     case chat = "Chat"
     case systemAnalysis = "System Analysis"
@@ -482,6 +488,7 @@ enum ModelCapability: String, CaseIterable {
     }
 }
 
+/// Errors surfaced by `ModelManager` during download / installation.
 enum ModelError: LocalizedError {
     case alreadyDownloading
     case invalidURL

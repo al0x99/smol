@@ -104,9 +104,7 @@ class FoundationModelEngine: LLMInferenceEngine, @unchecked Sendable {
             throw LLMError.modelNotLoaded
         }
 
-        stateLock.lock()
-        shouldCancel = false
-        stateLock.unlock()
+        stateLock.withLock { shouldCancel = false }
 
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
@@ -191,9 +189,7 @@ class FoundationModelEngine: LLMInferenceEngine, @unchecked Sendable {
 
     /// Cancel generation in progress
     func cancelGeneration() {
-        stateLock.lock()
-        shouldCancel = true
-        stateLock.unlock()
+        stateLock.withLock { shouldCancel = true }
     }
 
     /// Initialize the engine if Foundation Models are available (called at startup)

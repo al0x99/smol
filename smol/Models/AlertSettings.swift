@@ -31,36 +31,36 @@ class AlertSettings: ObservableObject {
 
     /// Tip for CPU threshold
     static let cpuThresholdTip = """
-    Quanto CPU deve usare un processo per essere considerato "alto".
+    How much CPU a process must use to count as "high".
 
-    • 20-30%: Sensibile - rileva più processi
-    • 30-50%: Bilanciato (consigliato)
-    • 50%+: Solo processi molto intensivi
+    • 20–30%: Sensitive — flags more processes
+    • 30–50%: Balanced (recommended)
+    • 50%+: Only very intensive processes
 
-    Processi come browser o IDE possono usare 20-40% normalmente.
+    Browsers and IDEs commonly sit at 20–40% during normal use.
     """
 
     /// Tip for minimum running time
     static let minRunningTip = """
-    Quanto tempo deve girare un processo prima di analizzarlo.
+    How long a process must run before smol analyzes it.
 
-    • 5 min: Rileva problemi rapidamente
-    • 10 min: Bilanciato (consigliato)
-    • 30+ min: Solo processi che girano da molto
+    • 5 min: Catches issues quickly
+    • 10 min: Balanced (recommended)
+    • 30+ min: Only long-running processes
 
-    Valori bassi possono generare falsi positivi per processi temporanei.
+    Low values can produce false positives for short-lived processes.
     """
 
     /// Tip for CPU threshold time
     static let cpuTimeTip = """
-    Quanti minuti di lavoro CPU effettivo deve accumulare un processo.
+    How many minutes of accumulated CPU work a process must reach.
 
-    • 2-5 min: Sensibile
-    • 5-10 min: Bilanciato (consigliato)
-    • 15+ min: Solo processi che lavorano molto
+    • 2–5 min: Sensitive
+    • 5–10 min: Balanced (recommended)
+    • 15+ min: Only heavy workers
 
-    Un processo in background che usa 50% CPU per 20 minuti
-    accumula 10 minuti di CPU time.
+    A background process at 50% CPU for 20 minutes accumulates 10 minutes
+    of CPU time.
     """
 
     // MARK: - Presets
@@ -76,24 +76,24 @@ class AlertSettings: ObservableObject {
 
     static let presets: [Preset] = [
         Preset(
-            name: "Sensibile",
-            description: "Rileva più anomalie",
+            name: "Sensitive",
+            description: "Catches more anomalies",
             cpuThreshold: 20,
             minRunningMinutes: 5,
             cpuTimeThreshold: 3,
             icon: "eye.fill"
         ),
         Preset(
-            name: "Bilanciato",
-            description: "Consigliato",
+            name: "Balanced",
+            description: "Recommended",
             cpuThreshold: 30,
             minRunningMinutes: 10,
             cpuTimeThreshold: 5,
             icon: "scale.3d"
         ),
         Preset(
-            name: "Rilassato",
-            description: "Solo problemi seri",
+            name: "Relaxed",
+            description: "Serious issues only",
             cpuThreshold: 50,
             minRunningMinutes: 30,
             cpuTimeThreshold: 15,
