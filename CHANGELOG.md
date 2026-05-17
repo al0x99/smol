@@ -11,6 +11,10 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
   equality, `MemoryInfo` pressure-level thresholds, `ProcessInfo.isAnomaly`
   boundary conditions, and `AlertSettings` presets / `applyPreset` /
   `resetToDefaults`. Brings the suite to 41 tests.
+- `smolTests/FanInfoTests.swift` — pins `FanMonitor.FanInfo.rpmPercent`
+  edge cases (at min, at max, below min, above max, degenerate `min ==
+  max` and `min > max`, negative readings) plus the three
+  `SystemMonitor.TemperatureTrend` glyphs. Suite is now 51 tests.
 - VoiceOver labels on the `MenuBarExtra` widget (announces system health,
   CPU%, and temperature), on the top-processes refresh button, on each
   suspicious-process terminate button (named after the target process), on
