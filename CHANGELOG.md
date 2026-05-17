@@ -6,6 +6,48 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
 ## [Unreleased]
 
+### Changed
+- `TemperatureMonitor` is now pinned to `@MainActor`. Every caller (the
+  menu-bar `SystemMonitor` timer and the `TemperatureTab` view) already
+  runs on the main actor, and the prior implementation had no
+  synchronisation on `smcConnection` / `temperatureHistory` — a Swift 6
+  hazard waiting to surface as soon as any background caller showed up.
+- `TemperatureMonitor.getAllSensors()` now caches its result for 1 s.
+  `SystemMonitor` polls every 2 s and the Temperature tab polls every 2 s
+  independently; without the cache, opening the tab doubled the SMC scan
+  rate (and the IOKit round-trips per scan are non-trivial).
+- SMC four-char type codes (`sp78`, `sp87`, `sp5a`, `sp69`, `flt`, `fpe2`)
+  are now resolved once at `TemperatureMonitor.init()` instead of via
+  `stringToFourCharCode` on every key on every poll. With 70+ sensor keys
+  scanned every 2 s that was a measurable per-tick allocation tax.
+- `stringToFourCharCode` is now `nonisolated static` so it is callable
+  from `init()` before `self` is fully formed.
+
+### Fixed
+- **`TemperatureMonitor.getSmartFallback()` no longer feeds itself.** The
+  previous code wrote the fallback estimate back into
+  `temperatureHistory`, which `getSmartFallback()` then blended into the
+  next fallback. The bias compounded: after a few SMC-unavailable ticks
+  the displayed temperature drifted asymptotically toward `baseTemp`
+  regardless of what the machine was actually doing.
+- **Duplicate sensor keys in `sensorDatabase` removed.** `Ts1P`, `Ts0P`,
+  `Th0H`, and `Ts0S` were listed in two different categories each. The
+  second entry overwrote the first's category in
+  `getSensorsByCategory()`, so on M-series machines the labels (e.g. "Right
+  Thunderbolt Ports Proximity") appeared under the wrong category.
+- `TemperatureMonitor.writeDebugToFile()` no longer triple-walks the
+  sensor list. It groups the already-fetched array locally instead of
+  calling `getSensorsByCategory()`, which would re-enter `getAllSensors()`
+  and re-execute the full SMC scan.
+- Translated remaining Italian debug-log strings in `TemperatureMonitor`
+  (`SMC connesso`, `Test chiavi`, `non trovata`, `chiavi SMC`, `tipo=`).
+
+### Removed
+- `TemperatureMonitor.deinit` / `closeSMCConnection()` — dead code for a
+  singleton whose lifetime is the process lifetime. The kernel reclaims
+  `io_connect_t` at exit, and the `deinit` would have needed to be
+  `nonisolated`, conflicting with the new `@MainActor` boundary.
+
 ### Added
 - `smolTests/SystemHealthTests.swift` — coverage for `SystemHealth` styling and
   equality, `MemoryInfo` pressure-level thresholds, `ProcessInfo.isAnomaly`

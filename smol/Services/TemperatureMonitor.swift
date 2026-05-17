@@ -35,15 +35,42 @@ struct TemperatureSensor: Identifiable {
     }
 }
 
-/// Monitors all system temperatures via SMC and IOKit
-class TemperatureMonitor {
+/// Monitors all system temperatures via SMC and IOKit.
+///
+/// Pinned to `@MainActor`. Every caller (the menu-bar `SystemMonitor`
+/// timer and the `TemperatureTab` view) already runs on the main actor,
+/// and the mutable state below (`smcConnection`, `isSmcConnected`,
+/// `temperatureHistory`, `lastSensorScan`) is otherwise unprotected —
+/// the alternative would be a lock on every poll.
+@MainActor
+final class TemperatureMonitor {
     /// Singleton to avoid multiple SMC connections
     static let shared = TemperatureMonitor()
 
     private var smcConnection: io_connect_t = 0
     private var isSmcConnected = false
     private var lastValidTemperature: Double = 0
+
+    /// Ring buffer of recent **real** sensor maxima (never polluted by
+    /// fallback estimates — otherwise the fallback would compound on
+    /// itself when SMC stays unavailable for multiple ticks).
     private var temperatureHistory: [Double] = []
+
+    /// Cache for `getAllSensors()`. SystemMonitor polls every 2 s, and
+    /// the Temperature tab polls every 2 s independently — without the
+    /// cache, opening the tab doubles the SMC scan rate. TTL is short
+    /// enough that nobody notices stale readings (one-tick lag at most).
+    private var lastSensorScan: (timestamp: Date, sensors: [TemperatureSensor])?
+    private let sensorCacheTTL: TimeInterval = 1.0
+
+    /// Resolve SMC type four-char-codes once at init instead of paying
+    /// `stringToFourCharCode` on every key on every poll.
+    private let sp78Type: UInt32
+    private let sp87Type: UInt32
+    private let sp5aType: UInt32
+    private let sp69Type: UInt32
+    private let fltType:  UInt32
+    private let fpeType:  UInt32
 
     // Complete SMC key database for Apple Silicon and Intel
     // Based on TG Pro and other monitoring tools
@@ -132,7 +159,6 @@ class TemperatureMonitor {
         ("Tb2P", "Battery Proximity 3", .battery),
         ("TBat", "Battery", .battery),
         ("TbGG", "Battery Gas Gauge", .battery),
-        ("Ts1P", "Battery Management Unit", .battery),
 
         // Storage / SSD
         ("TH0P", "SSD Proximity", .storage),
@@ -141,8 +167,6 @@ class TemperatureMonitor {
         ("TH0c", "SSD 3", .storage),
         ("TH0x", "SSD NAND", .storage),
         ("TH1P", "SSD Proximity 2", .storage),
-        ("Th0H", "HDD Proximity", .storage),
-        ("Ts0P", "SSD", .storage),
         ("Ts0S", "SSD SMART", .storage),
         ("TN0P", "SSD (NAND I/O)", .storage),
         ("TN1P", "SSD (NAND I/O) 2", .storage),
@@ -179,7 +203,6 @@ class TemperatureMonitor {
         ("Ts3P", "Palm Rest Right", .other),
         ("TL0P", "LCD Proximity", .other),
         ("TL1P", "LCD Proximity 2", .other),
-        ("Ts0S", "Charger Proximity", .other),
         ("TZ0P", "Thermal Zone 1", .other),
         ("TZ1P", "Thermal Zone 2", .other),
     ]
@@ -192,6 +215,12 @@ class TemperatureMonitor {
 
     /// Private init for singleton
     private init() {
+        self.sp78Type = Self.stringToFourCharCode("sp78")
+        self.sp87Type = Self.stringToFourCharCode("sp87")
+        self.sp5aType = Self.stringToFourCharCode("sp5a")
+        self.sp69Type = Self.stringToFourCharCode("sp69")
+        self.fltType  = Self.stringToFourCharCode("flt ")
+        self.fpeType  = Self.stringToFourCharCode("fpe2")
         openSMCConnection()
     }
 
@@ -199,27 +228,32 @@ class TemperatureMonitor {
     private func writeDebugToFile() {
         var log = "=== SMC Debug Log ===\n"
         log += "Timestamp: \(Date())\n"
-        log += "SMC connesso: \(isSmcConnected)\n\n"
+        log += "SMC connected: \(isSmcConnected)\n\n"
 
         // Test common keys with debug bytes
         let testKeys = ["Tp01", "Tp05", "Tp09", "Tp0D", "TB0T"]
-        log += "--- Test chiavi con debug byte ---\n"
+        log += "--- Debug-byte key probe ---\n"
         for key in testKeys {
             if let result = debugReadSMCKeyWithBytes(key) {
-                log += "[\(key)] tipo=\(result.typeStr) size=\(result.dataSize)\n"
+                log += "[\(key)] type=\(result.typeStr) size=\(result.dataSize)\n"
                 log += "  bytes: \(result.bytesHex)\n"
-                log += "  valore: \(String(format: "%.1f", result.value))°C\n"
+                log += "  value: \(String(format: "%.1f", result.value))°C\n"
             } else {
-                log += "[\(key)] non trovata\n"
+                log += "[\(key)] not found\n"
             }
         }
 
         // Show all sensors found by getAllSensors()
-        log += "\n--- Sensori trovati da getAllSensors() ---\n"
+        log += "\n--- Sensors discovered by getAllSensors() ---\n"
         let allSensors = getAllSensors()
-        log += "Totale sensori: \(allSensors.count)\n\n"
+        log += "Total sensors: \(allSensors.count)\n\n"
 
-        let grouped = getSensorsByCategory()
+        // Group locally instead of calling getSensorsByCategory(), which
+        // would re-enter getAllSensors() and re-walk the sensor database.
+        var grouped: [TemperatureSensor.SensorCategory: [TemperatureSensor]] = [:]
+        for sensor in allSensors {
+            grouped[sensor.category, default: []].append(sensor)
+        }
         for category in TemperatureSensor.SensorCategory.allCases {
             if let sensors = grouped[category], !sensors.isEmpty {
                 log += "[\(category.rawValue)]\n"
@@ -236,9 +270,10 @@ class TemperatureMonitor {
         SmolLog.temperature.debug("SMC debug log written to: \(path, privacy: .public)")
     }
 
-    deinit {
-        closeSMCConnection()
-    }
+    // No deinit: this is a singleton, the SMC connection lives for the
+    // process lifetime, and the kernel reclaims it at exit. A `deinit`
+    // would be unreachable and would need to be nonisolated, which
+    // conflicts with the `@MainActor`-bound mutable state.
 
     /// Opens connection to SMC
     private func openSMCConnection() {
@@ -260,13 +295,6 @@ class TemperatureMonitor {
             }
         }
         SmolLog.temperature.warning("SMC not available")
-    }
-
-    private func closeSMCConnection() {
-        if isSmcConnected {
-            IOServiceClose(smcConnection)
-            isSmcConnected = false
-        }
     }
 
     // MARK: - Public API
@@ -292,29 +320,38 @@ class TemperatureMonitor {
             return maxTemp
         }
 
-        let fallbackTemp = getSmartFallback()
-        updateHistory(fallbackTemp)
-        return fallbackTemp
+        // No real reading this tick. Return the fallback but DON'T feed it
+        // back into the history buffer — `getSmartFallback()` blends the
+        // history into its own output, so writing the fallback back would
+        // make subsequent fallbacks drift toward `baseTemp` regardless of
+        // what the machine is actually doing.
+        return getSmartFallback()
     }
 
-    /// Gets all available temperature sensors
-    /// Returns empty array if SMC is not available (no simulated data)
+    /// Gets all available temperature sensors.
+    /// Returns empty array if SMC is not available (no simulated data).
+    /// Cached for `sensorCacheTTL` seconds so concurrent pollers
+    /// (`SystemMonitor` + the open `TemperatureTab`) share one scan.
     func getAllSensors() -> [TemperatureSensor] {
-        var sensors: [TemperatureSensor] = []
-        var seenNames: [String: Int] = [:]  // To number sensors with the same name
+        if let cache = lastSensorScan,
+           -cache.timestamp.timeIntervalSinceNow < sensorCacheTTL {
+            return cache.sensors
+        }
 
         // If SMC is not connected, return empty array (no simulation)
         guard isSmcConnected else {
             return []
         }
 
+        var sensors: [TemperatureSensor] = []
+        var seenNames: [String: Int] = [:]
+
         for sensorInfo in sensorDatabase {
             if let temp = readSMCKey(sensorInfo.key), temp > 0 && temp < 150 {
-                // Handle duplicate names
+                // Number sensors that share a base name (e.g. two "SSD")
                 var finalName = sensorInfo.name
                 if let count = seenNames[sensorInfo.name] {
                     seenNames[sensorInfo.name] = count + 1
-                    // Do not modify the name if it already has a number
                     if !sensorInfo.name.contains(where: { $0.isNumber }) {
                         finalName = "\(sensorInfo.name) \(count + 1)"
                     }
@@ -332,13 +369,15 @@ class TemperatureMonitor {
             }
         }
 
-        // Sort by category and name
-        return sensors.sorted { sensor1, sensor2 in
-            if sensor1.category.rawValue == sensor2.category.rawValue {
-                return sensor1.name < sensor2.name
+        let sorted = sensors.sorted { lhs, rhs in
+            if lhs.category.rawValue == rhs.category.rawValue {
+                return lhs.name < rhs.name
             }
-            return sensor1.category.rawValue < sensor2.category.rawValue
+            return lhs.category.rawValue < rhs.category.rawValue
         }
+
+        lastSensorScan = (Date(), sorted)
+        return sorted
     }
 
     /// Gets sensors grouped by category
@@ -358,16 +397,18 @@ class TemperatureMonitor {
 
     // MARK: - SMC Reading
 
-    /// Converts key string to UInt32
-    private func stringToFourCharCode(_ key: String) -> UInt32 {
+    /// Converts a four-char-code key string to its `UInt32` SMC
+    /// representation. `nonisolated static` so `init()` can use it before
+    /// `self` is fully formed (we cache the type codes once at startup).
+    nonisolated static func stringToFourCharCode(_ key: String) -> UInt32 {
         var result: UInt32 = 0
         for (i, char) in key.utf8.enumerated() where i < 4 {
             result = result << 8 | UInt32(char)
         }
-        // Pad with spaces if less than 4 characters
+        // Pad with spaces if shorter than 4 characters
         let padding = 4 - min(key.utf8.count, 4)
         for _ in 0..<padding {
-            result = result << 8 | UInt32(0x20) // spazio
+            result = result << 8 | UInt32(0x20)
         }
         return result
     }
@@ -377,7 +418,7 @@ class TemperatureMonitor {
         var inputStruct = SMCKeyData()
         var outputStruct = SMCKeyData()
 
-        inputStruct.key = stringToFourCharCode(key)
+        inputStruct.key = Self.stringToFourCharCode(key)
         inputStruct.data8 = SMCCommand.getKeyInfo
 
         let inputSize = MemoryLayout<SMCKeyData>.size
@@ -409,7 +450,7 @@ class TemperatureMonitor {
         var inputStruct = SMCKeyData()
         var outputStruct = SMCKeyData()
 
-        inputStruct.key = stringToFourCharCode(key)
+        inputStruct.key = Self.stringToFourCharCode(key)
         inputStruct.data8 = SMCCommand.readKey
         inputStruct.keyInfo.dataSize = keyInfo.dataSize
 
@@ -434,19 +475,12 @@ class TemperatureMonitor {
         // Verify there is valid data
         if keyInfo.dataSize == 0 { return nil }
 
-        // sp78: signed fixed point 7.8 (most common for temperatures)
-        // flt: float 32-bit
-        // ui8: unsigned int 8
-        // ui16: unsigned int 16
-        // ui32: unsigned int 32
-
-        let sp78Type = stringToFourCharCode("sp78")
-        let fltType = stringToFourCharCode("flt ")
-        let fpeType = stringToFourCharCode("fpe2")
-        let sp5aType = stringToFourCharCode("sp5a")
-        let sp69Type = stringToFourCharCode("sp69")
-        let sp87Type = stringToFourCharCode("sp87")
-
+        // sp78: signed fixed point 7.8 (most common temperature encoding)
+        // sp87: signed 8.7
+        // sp5a: signed 5.10
+        // sp69: signed 6.9
+        // flt : float 32-bit (Apple Silicon uses big-endian here)
+        // fpe2: unsigned 14.2
         if dataType == sp78Type || dataType == sp87Type {
             // sp78: signed 7.8 fixed point
             // sp87: signed 8.7 fixed point
@@ -578,7 +612,7 @@ class TemperatureMonitor {
 
         if result == kIOReturnSuccess {
             let keyCount = outputStruct.data32
-            SmolLog.temperature.debug("DEBUG: Found \(keyCount) chiavi SMC")
+            SmolLog.temperature.debug("DEBUG: Found \(keyCount) SMC keys")
 
             // Try to read the first 20 temperature keys
             var tempKeysFound = 0
@@ -635,8 +669,8 @@ class TemperatureMonitor {
 
     /// Quick SMC read test for debug
     func debugTestRead() {
-        SmolLog.temperature.debug("DEBUG: Test lettura SMC")
-        SmolLog.temperature.debug("  SMC connesso: \(self.isSmcConnected)")
+        SmolLog.temperature.debug("DEBUG: SMC read probe")
+        SmolLog.temperature.debug("  SMC connected: \(self.isSmcConnected)")
 
         // Try some common keys
         let testKeys = ["TC0P", "TC0D", "Tp01", "Tp0D", "TG0P", "TB0T"]
@@ -649,13 +683,13 @@ class TemperatureMonitor {
                     UInt8(info.dataType & 0xFF)
                 ]
                 let typeStr = String(bytes: typeChars, encoding: .ascii) ?? "????"
-                SmolLog.temperature.debug("  [\(key, privacy: .public)] tipo=\(typeStr, privacy: .public) size=\(info.dataSize)")
+                SmolLog.temperature.debug("  [\(key, privacy: .public)] type=\(typeStr, privacy: .public) size=\(info.dataSize)")
 
                 if let temp = readSMCKey(key) {
-                    SmolLog.temperature.debug("       valore=\(String(format: "%.1f", temp))°C")
+                    SmolLog.temperature.debug("       value=\(String(format: "%.1f", temp))°C")
                 }
             } else {
-                SmolLog.temperature.debug("  [\(key, privacy: .public)] non trovata")
+                SmolLog.temperature.debug("  [\(key, privacy: .public)] not found")
             }
         }
     }
@@ -678,7 +712,7 @@ class TemperatureMonitor {
         var inputStruct = SMCKeyData()
         var outputStruct = SMCKeyData()
 
-        inputStruct.key = stringToFourCharCode(key)
+        inputStruct.key = Self.stringToFourCharCode(key)
         inputStruct.data8 = SMCCommand.readKey
         inputStruct.keyInfo.dataSize = keyInfo.dataSize
 
@@ -711,7 +745,6 @@ class TemperatureMonitor {
         let bytesHex = allBytes.prefix(Int(keyInfo.dataSize)).map { String(format: "%02X", $0) }.joined(separator: " ")
 
         // Decode value based on type
-        let fltType = stringToFourCharCode("flt ")
         var value: Double = 0
 
         if keyInfo.dataType == fltType {
