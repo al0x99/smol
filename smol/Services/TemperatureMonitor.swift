@@ -271,21 +271,27 @@ class TemperatureMonitor {
 
     // MARK: - Public API
 
-    /// Gets main CPU temperature in degrees Celsius
+    /// Gets the "system" CPU temperature in degrees Celsius.
+    ///
+    /// Returns the hottest CPU core, not the mean. On Apple Silicon the
+    /// per-core sensors drop in and out of the readable set each tick as
+    /// cores park — `getAllSensors()` excludes any sensor that reads 0 or
+    /// is out of plausible range, so the sample count swings between
+    /// every poll. Averaging over a variable-size sample makes the
+    /// displayed value jump 30–40°C between ticks. The maximum is stable
+    /// across that churn and is also the value that drives thermal
+    /// throttling and fan ramp-up, which is what the menu-bar widget is
+    /// trying to communicate.
     func getCPUTemperature() -> Double {
-        // Try to read CPU sensors
         let cpuSensors = getAllSensors().filter {
             $0.category == .cpuPerformance || $0.category == .cpuEfficiency
         }
 
-        if !cpuSensors.isEmpty {
-            // Return the average of CPU sensors
-            let avgTemp = cpuSensors.map { $0.temperature }.reduce(0, +) / Double(cpuSensors.count)
-            updateHistory(avgTemp)
-            return avgTemp
+        if let maxTemp = cpuSensors.map(\.temperature).max() {
+            updateHistory(maxTemp)
+            return maxTemp
         }
 
-        // Fallback
         let fallbackTemp = getSmartFallback()
         updateHistory(fallbackTemp)
         return fallbackTemp

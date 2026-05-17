@@ -60,7 +60,22 @@ jobs:
             exit 1
           fi
 
+      - name: Detect runner macOS version
+        id: macos
+        run: |
+          major=$(sw_vers -productVersion | cut -d. -f1)
+          echo "major=$major" >> "$GITHUB_OUTPUT"
+          echo "Runner macOS major version: $major"
+
+      # The smol target (and therefore smolTests' TEST_HOST) is pinned to
+      # macOS 26.2 because the app uses FoundationModels, which is Tahoe-
+      # only. Tests cross-compile against the macOS 26 SDK from the build
+      # step above, but actually loading the test bundle requires a
+      # runtime that meets the deployment target. GitHub's hosted runners
+      # are still on macOS 15 as of mid-2026, so skip the test step until
+      # macos-26 ships and pin the version above when it does.
       - name: Run unit tests
+        if: steps.macos.outputs.major >= '26'
         run: |
           set -o pipefail
           xcodebuild \
@@ -73,3 +88,8 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             test
+
+      - name: Skip tests — runner macOS too old
+        if: steps.macos.outputs.major < '26'
+        run: |
+          echo "::warning::Skipping smolTests on macOS ${{ steps.macos.outputs.major }}.x — the test host requires macOS 26 (Tahoe). Run tests locally with: xcodebuild -project smol.xcodeproj -scheme smol test"

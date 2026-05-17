@@ -59,6 +59,14 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
   directly via its own switch.
 
 ### Fixed
+- **Menu-bar temperature no longer flickers ±40°C between ticks.**
+  `TemperatureMonitor.getCPUTemperature()` now returns the hottest core
+  instead of the mean. On Apple Silicon per-core sensors drop in and out
+  of the readable set every poll as cores park (`getAllSensors()` drops
+  anything reading 0 or out-of-range), so the divisor of the previous
+  mean was non-constant and the displayed value jumped 30–40°C. The max
+  is stable across that churn and is also the value that drives thermal
+  throttling and fan ramp.
 - **Parked M-series fans now spin up on Max / Manual.** On Apple Silicon
   the SMC firmware refuses `F*Tg` writes while a fan is parked at 0 RPM,
   which made our "Max" button (and any manual target) a no-op when the
