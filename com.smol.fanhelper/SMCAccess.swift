@@ -65,10 +65,24 @@ class SMCAccess {
     // lifetime: SMC F*Mn also resets on reboot.
     private var originalMinRPM: [Int: Int] = [:]
 
+    /// Serializes access to `originalMinRPM` and `keyInfoCache`. NSXPC
+    /// dispatches incoming method calls from a thread pool, so concurrent
+    /// `setFanRPM`/`setFanMode` requests can otherwise race the wake /
+    /// restore bookkeeping. NSLock is cheap enough to take on every SMC
+    /// hop and avoids the complexity of a sync queue around C-pointer args.
+    private let stateLock = NSLock()
+
     /// Path of the per-fan crash-safety mirror for `originalMinRPM`.
     private static let crashSafetyDir = "/tmp/com.smol.fanhelper"
     private static func crashSafetyPath(index: Int) -> String {
         return "\(crashSafetyDir)/originalMinRPM.\(index)"
+    }
+
+    @inline(__always)
+    private func withStateLock<T>(_ body: () -> T) -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return body()
     }
 
     init() {
@@ -366,10 +380,15 @@ class SMCAccess {
         let currentMin = bytesToRPM(mnVal.bytes, dataType: mnVal.dataType)
 
         // Cache on first wake only; subsequent wakes shouldn't clobber the
-        // true factory minimum with a previously-raised wake value.
-        if originalMinRPM[index] == nil {
+        // true factory minimum with a previously-raised wake value. The
+        // check-and-set must be atomic against concurrent XPC requests.
+        let didCache: Bool = withStateLock {
+            guard originalMinRPM[index] == nil else { return false }
             originalMinRPM[index] = currentMin
             persistOriginalMinRPM(index: index, value: currentMin)
+            return true
+        }
+        if didCache {
             smcLog("smolFanHelper: Cached original F%dMn=%d for later restore", index, currentMin)
         }
 
@@ -402,7 +421,7 @@ class SMCAccess {
     /// and returns true.
     @discardableResult
     func restoreFanMinimum(index: Int) -> Bool {
-        guard let originalMin = originalMinRPM[index] else {
+        guard let originalMin = withStateLock({ originalMinRPM[index] }) else {
             return true
         }
 
@@ -414,8 +433,10 @@ class SMCAccess {
 
         let currentMin = bytesToRPM(mnVal.bytes, dataType: mnVal.dataType)
         if currentMin == originalMin {
-            originalMinRPM[index] = nil
-            clearPersistedOriginalMinRPM(index: index)
+            withStateLock {
+                originalMinRPM[index] = nil
+                clearPersistedOriginalMinRPM(index: index)
+            }
             return true
         }
 
@@ -424,8 +445,10 @@ class SMCAccess {
         smcLog("smolFanHelper: F%dMn restore %d→%d result=%d", index, currentMin, originalMin, success ? 1 : 0)
 
         if success {
-            originalMinRPM[index] = nil
-            clearPersistedOriginalMinRPM(index: index)
+            withStateLock {
+                originalMinRPM[index] = nil
+                clearPersistedOriginalMinRPM(index: index)
+            }
         }
         return success
     }
@@ -433,22 +456,38 @@ class SMCAccess {
     /// Whether `index` currently has a raised F*Mn cached for restore.
     /// Used by the dispatcher to know whether the fan was woken by us.
     func hasCachedMinimum(index: Int) -> Bool {
-        return originalMinRPM[index] != nil
+        return withStateLock { originalMinRPM[index] != nil }
     }
 
     // MARK: - Crash-safe F*Mn persistence
 
     /// Mirror `originalMinRPM[index]` to `/tmp` so the restore can run
-    /// even after the helper crashes and is respawned by launchd.
+    /// even after the helper crashes and is respawned by launchd. Caller
+    /// must hold `stateLock`. Failures here are logged but not surfaced —
+    /// the SMC write proceeds regardless, because failing to persist is
+    /// less bad than refusing to spin up a parked fan, and disk-full /
+    /// permission errors on /tmp are vanishingly rare for a root daemon.
     private func persistOriginalMinRPM(index: Int, value: Int) {
-        try? FileManager.default.createDirectory(atPath: Self.crashSafetyDir,
-                                                 withIntermediateDirectories: true)
-        let path = Self.crashSafetyPath(index: index)
-        try? "\(value)".write(toFile: path, atomically: true, encoding: .utf8)
+        do {
+            try FileManager.default.createDirectory(atPath: Self.crashSafetyDir,
+                                                    withIntermediateDirectories: true)
+            let path = Self.crashSafetyPath(index: index)
+            try "\(value)".write(toFile: path, atomically: true, encoding: .utf8)
+        } catch {
+            smcLog("smolFanHelper: WARNING failed to persist F%dMn=%d for crash-safety: %@",
+                   index, value, error.localizedDescription)
+        }
     }
 
     private func clearPersistedOriginalMinRPM(index: Int) {
-        try? FileManager.default.removeItem(atPath: Self.crashSafetyPath(index: index))
+        let path = Self.crashSafetyPath(index: index)
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        do {
+            try FileManager.default.removeItem(atPath: path)
+        } catch {
+            smcLog("smolFanHelper: WARNING failed to clear crash-safety file for fan %d: %@",
+                   index, error.localizedDescription)
+        }
     }
 
     /// On startup, read any persisted `originalMinRPM` files and immediately
@@ -468,7 +507,7 @@ class SMCAccess {
                 continue
             }
             smcLog("smolFanHelper: Recovered persisted original F%dMn=%d from prior session — restoring", index, value)
-            originalMinRPM[index] = value
+            withStateLock { originalMinRPM[index] = value }
             _ = restoreFanMinimum(index: index)
         }
     }
@@ -653,8 +692,7 @@ class SMCAccess {
 
     /// Gets information about an SMC key (with cache)
     private func getKeyInfo(_ keyCode: UInt32) -> SMCKeyInfoData? {
-        // Check cache first
-        if let cached = keyInfoCache[keyCode] {
+        if let cached = withStateLock({ keyInfoCache[keyCode] }) {
             return cached
         }
 
@@ -669,7 +707,7 @@ class SMCAccess {
         }
 
         let keyInfo = output.keyInfo
-        keyInfoCache[keyCode] = keyInfo
+        withStateLock { keyInfoCache[keyCode] = keyInfo }
 
         smcLog("smolFanHelper: KeyInfo for %@: size=%d, type=%@",
               keyToString(keyCode), keyInfo.dataSize, fourCharToString(keyInfo.dataType))

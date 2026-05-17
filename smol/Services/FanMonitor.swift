@@ -20,6 +20,14 @@ class FanMonitor {
     private var helperAvailable = false
     private var helperCheckDone = false
 
+    /// Serializes fan mode changes so a rapid double-tap on the menu-bar
+    /// control doesn't queue two `setFanModeViaHelper` runs on the global
+    /// pool — each holds a worker thread blocked behind multiple XPC
+    /// semaphores, and overlapping runs can stomp on each other's wake /
+    /// restore bookkeeping in the helper.
+    private let fanControlQueue = DispatchQueue(label: "com.smol.fanmonitor.control",
+                                                qos: .userInitiated)
+
     enum FanMode {
         case system            // macOS automatic control
         case max               // Fans at maximum
@@ -75,7 +83,7 @@ class FanMonitor {
 
         xpcConnection?.resume()
 
-        // Test connessione asincrono
+        // Async connectivity probe
         checkHelperAvailability()
     }
 
@@ -92,22 +100,16 @@ class FanMonitor {
             return
         }
 
-        // Use ping to verify connectivity (does not depend on SMC)
+        // Use ping to verify connectivity (does not depend on SMC).
+        // We intentionally do NOT call debugEnumerateKeys here — that probes
+        // up to 1000 SMC keys synchronously in the privileged process and
+        // its reply closure holds the XPC proxy alive past quit, which can
+        // block launchd from stopping the helper.
         helper.ping { [weak self] success in
             if success {
                 SmolLog.fan.info("Helper ping successful - helper is available")
                 self?.helperAvailable = true
                 self?.helperCheckDone = true
-
-                // Also try to get fan count for debug
-                helper.getFanCount { count in
-                    SmolLog.fan.info("Helper reports \(count) fan(s)")
-                }
-
-                // Debug: enumerate available SMC keys
-                helper.debugEnumerateKeys { result in
-                    SmolLog.fan.debug("Debug enumeration: \(result, privacy: .public)")
-                }
             } else {
                 SmolLog.fan.warning("Helper ping failed")
                 self?.helperAvailable = false
@@ -242,11 +244,17 @@ class FanMonitor {
         return isAppleSilicon && !helperAvailable && helperCheckDone
     }
 
-    /// Gets fan info via XPC helper
+    /// Gets fan info via XPC helper.
+    ///
+    /// Uses the **async** proxy with a semaphore so we get a real 1-second
+    /// timeout if the helper hangs. The synchronous proxy variant blocks
+    /// indefinitely (until the XPC connection invalidates) so wrapping it
+    /// with a semaphore gives no protection — the proxy call returns
+    /// before `wait` even runs, and the timeout never fires.
     private func getAppleSiliconFanInfoViaHelper() -> [FanInfo]? {
         guard helperAvailable else { return nil }
 
-        guard let helper = xpcConnection?.synchronousRemoteObjectProxyWithErrorHandler({ error in
+        guard let helper = xpcConnection?.remoteObjectProxyWithErrorHandler({ error in
             SmolLog.fan.error("XPC error: \(error.localizedDescription)")
         }) as? FanHelperProtocol else {
             return nil
@@ -279,7 +287,6 @@ class FanMonitor {
             }
         }
 
-        // Timeout 1 second
         let result = semaphore.wait(timeout: .now() + 1.0)
         if result == .timedOut {
             SmolLog.fan.warning("Helper timeout")
@@ -621,11 +628,12 @@ class FanMonitor {
             return
         }
 
-        // Execute on background thread to avoid deadlock
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        // Serialise mode changes so a rapid double-tap doesn't queue two
+        // multi-second blocking runs on the global pool.
+        fanControlQueue.async { [weak self] in
             guard let self = self else { return }
 
-            guard let helper = connection.synchronousRemoteObjectProxyWithErrorHandler({ error in
+            guard let helper = connection.remoteObjectProxyWithErrorHandler({ error in
                 SmolLog.fan.error("XPC error setting mode: \(error.localizedDescription)")
             }) as? FanHelperProtocol else {
                 SmolLog.fan.error("Failed to get helper proxy for setting fan mode")
