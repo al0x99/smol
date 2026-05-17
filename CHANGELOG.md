@@ -108,6 +108,34 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
   `@MainActor` on `SystemHealthTests`, `AIModelsTests`,
   `AnomalyDetectorTests`, `NaturalLanguageProcessorTests`,
   `SystemReportGeneratorTests`, and `AIServicesIntegrationTests`.
+- **Crash-safe `F*Mn` restore.** The helper now mirrors any lifted
+  per-fan minimum to `/tmp/com.smol.fanhelper/originalMinRPM.<n>` and
+  restores it from disk at next start, so a crash between wake and
+  restore can no longer leave the fan minimum permanently raised. `/tmp`
+  is cleared on reboot — the same lifetime SMC `F*Mn` resets at.
+- **Helper concurrency hardening.** `originalMinRPM` and `keyInfoCache`
+  are now serialised behind an `NSLock` inside `SMCAccess`. NSXPC
+  dispatches incoming method calls from a thread pool, so back-to-back
+  `setFanRPM`/`setFanMode` requests could otherwise race the wake/
+  restore bookkeeping. `wakeParkedFan` also bails out cleanly when
+  `F*Mx` reads 0 (unknown ceiling) instead of clamping against zero.
+- **XPC timeouts in `FanMonitor` now have real teeth.** The previous
+  code wrapped `synchronousRemoteObjectProxyWithErrorHandler` calls
+  with a `DispatchSemaphore.wait(timeout:)`, but the synchronous proxy
+  itself blocks until the connection invalidates — the surrounding
+  semaphore was already signalled by the time `wait` ran. Mode-change
+  and fan-info paths now use the async proxy so the 1–2 s timeouts
+  actually fire when the helper hangs.
+- **Mode changes routed through a private serial queue.** A rapid
+  double-tap on a fan-mode button used to spawn two
+  `setFanModeViaHelper` runs on `DispatchQueue.global(.userInitiated)`,
+  each pinning a worker thread behind multiple multi-second semaphores
+  and starving XPC reply delivery. A dedicated
+  `com.smol.fanmonitor.control` serial queue serialises them.
+- **Dropped wasteful `debugEnumerateKeys` from helper ping path.** That
+  probe enumerates up to 1000 SMC keys synchronously in the root
+  daemon, and its `@escaping` reply closure pinned the XPC proxy past
+  quit. The ping now only verifies connectivity.
 
 ### Security
 - **Privileged helper input validation.** Every XPC method that accepts a fan
