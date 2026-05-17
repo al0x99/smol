@@ -122,10 +122,7 @@ class ModelManager: ObservableObject {
     // MARK: - Initialization
 
     private init() {
-        // Setup models directory
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        modelsDirectory = appSupport.appendingPathComponent("smol/Models", isDirectory: true)
-
+        modelsDirectory = URL.applicationSupportDirectory.appending(path: "smol/Models", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
 
         // Load catalog and check downloaded

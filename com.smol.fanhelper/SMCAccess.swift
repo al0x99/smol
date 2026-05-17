@@ -152,8 +152,8 @@ class SMCAccess {
     }
 
     /// Enable/disable force mode for a fan
-    /// Su Apple Silicon (M1/M2/M3/M4), usa F%dMd invece di FS!
-    /// Mode values: 0=off?, 1=manual?, 2=?, 3=auto (default)
+    /// On Apple Silicon (M1/M2/M3/M4) the per-fan key is `F%dMd`, not the
+    /// Intel-era `FS!` bitmask. Mode values: 0=off?, 1=manual?, 2=?, 3=auto (default)
     ///
     /// On M4, the sequence appears to be:
     /// 1. Write to FOFC to enable force control mode globally

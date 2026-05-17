@@ -12,8 +12,7 @@ enum SmolLog {
 
     /// Returns ~/Library/Application Support/smol/Logs/, creating it if needed
     static var logsDirectory: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let logsDir = appSupport.appendingPathComponent("smol/Logs", isDirectory: true)
+        let logsDir = URL.applicationSupportDirectory.appending(path: "smol/Logs", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
         return logsDir
     }

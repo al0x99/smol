@@ -63,11 +63,7 @@ class MLAnomalyEngine: ObservableObject {
     // MARK: - Initialization
 
     init() {
-        // Setup models directory in app support
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        modelsDirectory = appSupport.appendingPathComponent("smol/MLModels", isDirectory: true)
-
-        // Create directory if needed
+        modelsDirectory = URL.applicationSupportDirectory.appending(path: "smol/MLModels", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
 
         // Load existing models if available
