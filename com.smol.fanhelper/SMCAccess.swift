@@ -1,24 +1,42 @@
 import Foundation
 import IOKit
 
-/// Helper function to log to both NSLog and a file (supports format strings)
+#if DEBUG
+/// Lazily-opened append handle for the helper debug log. Reused across calls
+/// so we don't pay open/seek/close on every line (smcLog is on hot fan paths).
+private nonisolated(unsafe) var smcLogHandle: FileHandle? = {
+    let logFile = "/tmp/smol_helper_debug.log"
+    if !FileManager.default.fileExists(atPath: logFile) {
+        FileManager.default.createFile(atPath: logFile, contents: nil, attributes: nil)
+    }
+    guard let handle = FileHandle(forWritingAtPath: logFile) else { return nil }
+    handle.seekToEndOfFile()
+    return handle
+}()
+
+private let smcLogFormatter: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return f
+}()
+
+private let smcLogQueue = DispatchQueue(label: "com.smol.fanhelper.log")
+#endif
+
+/// Centralised log for the privileged helper. Always emits to NSLog (unified
+/// logging); in DEBUG also appends to `/tmp/smol_helper_debug.log` via a
+/// reused file handle so the disk path is cheap enough for hot polling loops.
 private func smcLog(_ format: String, _ args: CVarArg...) {
     let message = String(format: format, arguments: args)
     NSLog("%@", message)
-    let logFile = "/tmp/smol_helper_debug.log"
-    let timestamp = ISO8601DateFormatter().string(from: Date())
-    let logMessage = "\(timestamp): \(message)\n"
-    if let data = logMessage.data(using: .utf8) {
-        if FileManager.default.fileExists(atPath: logFile) {
-            if let handle = FileHandle(forWritingAtPath: logFile) {
-                handle.seekToEndOfFile()
-                handle.write(data)
-                handle.closeFile()
-            }
-        } else {
-            FileManager.default.createFile(atPath: logFile, contents: data, attributes: nil)
-        }
+
+    #if DEBUG
+    let timestamp = smcLogFormatter.string(from: Date())
+    guard let data = "\(timestamp): \(message)\n".data(using: .utf8) else { return }
+    smcLogQueue.async {
+        smcLogHandle?.write(data)
     }
+    #endif
 }
 
 /// Direct SMC access for privileged helper
