@@ -18,10 +18,10 @@ class MemoryMonitor {
         )
     }
 
-    /// Gets the memory pressure percentage (0-100)
-    /// This is the TRUE value that matters, not the GB used
+    /// Gets the memory pressure percentage (0-100).
+    /// This is the value that maps to the LOW/MEDIUM/HIGH chip in the UI
+    /// — far more meaningful than "GB used".
     private func getMemoryPressurePercent() -> Double {
-        // Use vm_statistics64 to calculate pressure
         var stats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
 
@@ -35,19 +35,32 @@ class MemoryMonitor {
             return 0
         }
 
-        // Calculate pressure based on compressed pages and swap
         let compressedPages = UInt64(stats.compressor_page_count)
-        let totalPages = UInt64(stats.free_count + stats.active_count + stats.inactive_count + stats.wire_count + stats.compressor_page_count)
+        let totalPages = UInt64(stats.free_count
+            + stats.active_count
+            + stats.inactive_count
+            + stats.wire_count
+            + stats.compressor_page_count)
 
-        // Pressure is high when there are many compressed pages relative to total
-        // and when the system is actively paging
-        let compressionRatio = Double(compressedPages) / Double(max(totalPages, 1))
-        let pagingActivity = Double(stats.pageouts) / 1000.0 // Normalizza
+        return Self.pressurePercent(compressedPages: compressedPages, totalPages: totalPages)
+    }
 
-        // Simplified formula for pressure
-        let pressure = min(100, (compressionRatio * 100) + min(50, pagingActivity))
-
-        return pressure
+    /// Pure mapping from page counts to a 0–100 pressure score, so the
+    /// formula can be unit-tested without touching `host_statistics64`.
+    ///
+    /// The previous implementation added `min(50, stats.pageouts /
+    /// 1000)` — but `stats.pageouts` is *cumulative since boot*, so on
+    /// any machine with non-trivial uptime that term saturated to 50
+    /// and pinned the score at ≥50%, which then tripped
+    /// `SystemMonitor.calculateHealth()`'s `> 50` "Memory pressure
+    /// medium" warning even on a healthy machine. A correct paging-rate
+    /// term would require remembering the previous reading; until we
+    /// add that, the score is driven purely by compression ratio (the
+    /// metric Apple's own `memory_pressure(1)` tool emphasises).
+    static func pressurePercent(compressedPages: UInt64, totalPages: UInt64) -> Double {
+        guard totalPages > 0 else { return 0 }
+        let ratio = Double(compressedPages) / Double(totalPages)
+        return min(100, max(0, ratio * 100))
     }
 
     /// Gets used and total memory in bytes
@@ -96,39 +109,5 @@ class MemoryMonitor {
         }
 
         return swapUsage.xsu_used
-    }
-
-    /// Alternative method: runs the memory_pressure command
-    /// More accurate but slower
-    func getMemoryPressureFromCommand() -> (level: String, percent: Double) {
-        let task = Process()
-        let pipe = Pipe()
-
-        task.standardOutput = pipe
-        task.standardError = pipe
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/memory_pressure")
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8) ?? ""
-
-            // Parse output: "System-wide memory free percentage: 97%"
-            if let range = output.range(of: "free percentage: ") {
-                let percentStr = output[range.upperBound...]
-                    .prefix(while: { $0.isNumber })
-                if let freePercent = Double(percentStr) {
-                    let usedPercent = 100 - freePercent
-                    let level = usedPercent < 50 ? "LOW" : (usedPercent < 80 ? "MEDIUM" : "HIGH")
-                    return (level, usedPercent)
-                }
-            }
-        } catch {
-            // Silent fallback
-        }
-
-        return ("UNKNOWN", 0)
     }
 }

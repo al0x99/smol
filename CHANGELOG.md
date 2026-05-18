@@ -7,6 +7,10 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/MemoryMonitorTests.swift` — 7 tests pinning the
+  compression-ratio → pressure mapping, including the regression guard
+  for the bug below (10% compression on a healthy machine must NOT
+  trip the medium-pressure warning). Suite is now 87 tests.
 - `smolTests/ProcessAnalyzerTests.swift` — 14 tests pinning the
   suspicious-process detection rule (system-process skip, min-running
   floor, CPU-time floor, CPU% floor, sort order, the `<` boundary at
@@ -24,6 +28,17 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
   Suite is now 67 tests.
 
 ### Fixed
+- **Memory pressure no longer pinned at ≥50% on long-uptime machines.**
+  `MemoryMonitor.getMemoryPressurePercent()` previously added
+  `min(50, stats.pageouts / 1000)` to the compression ratio — but
+  `stats.pageouts` is cumulative since boot, so after a handful of
+  hours that term saturated to 50 and the displayed pressure was always
+  ≥50, which then tripped `SystemMonitor.calculateHealth`'s "Memory
+  pressure medium" warning on every healthy long-running Mac. Score is
+  now driven purely by compression ratio (the metric Apple's own
+  `memory_pressure(1)` tool emphasises). The formula was extracted into
+  a pure static `MemoryMonitor.pressurePercent(compressedPages:
+  totalPages:)` so it can be unit-tested without hitting Mach.
 - **`ProcessAnalyzer.findKnownBloatware` no longer emits one match per
   *pattern*.** The previous code looped patterns inside the bloatware
   loop and created a fresh `BloatwareMatch` each time a pattern
@@ -88,6 +103,10 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
   (`SMC connesso`, `Test chiavi`, `non trovata`, `chiavi SMC`, `tipo=`).
 
 ### Removed
+- `MemoryMonitor.getMemoryPressureFromCommand()` — dead code that
+  shelled out to `/usr/bin/memory_pressure` and parsed its output. No
+  in-app caller, and the formula in `getMemoryPressurePercent` already
+  produces the same LOW/MEDIUM/HIGH classification.
 - `TemperatureMonitor.deinit` / `closeSMCConnection()` — dead code for a
   singleton whose lifetime is the process lifetime. The kernel reclaims
   `io_connect_t` at exit, and the `deinit` would have needed to be
