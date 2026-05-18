@@ -7,6 +7,45 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/ResourceTrackerTests.swift` — 22 tests across three
+  structs covering the parts of `ResourceTracker` that don't depend on
+  the live sampling Timer: `ResourceCostImpactLevelTests` (11) pins
+  every boundary of the low/medium/high rule including the strict-`<`
+  semantics that make 30%, 70%, 0.5 mWh, and 2.0 mWh fall into the
+  *next* bucket; `ResourceTrackerLLMCostTests` (8) pins the per-`ModelSize`
+  table (CPU%, MB, warning copy), the monotonic slowdown across sizes,
+  and the spot-check arithmetic so the energy formula can't silently
+  drift; `ResourceCostFormattingTests` (5) pins the sign handling in
+  `description` (positive/negative/zero `memoryDelta` and absence of a
+  `--` double-minus), the conditional `tokens` segment, and the
+  emoji + label in `userFriendlyDescription`. Suite is now 161 tests.
+
+### Fixed
+- **`ResourceTracker.startTracking` no longer leaks the previous
+  sampling timer when called re-entrantly.** Two services
+  (`SmartAdvisor.analyze`, `LocalLLMEngine.process`) both grab
+  `ResourceTracker.shared` and call `startTracking()`. If the second
+  call landed before the first finished, the old `Timer` was simply
+  overwritten — the runloop kept a strong reference so it stayed alive
+  and kept appending samples to the post-reset array until the app
+  exited. The implementation now invalidates the existing timer at the
+  top of `startTracking()`.
+
+### Changed
+- `ResourceTracker.takeSnapshot` no longer runs the Mach kernel calls
+  twice per sample. Previously it computed `cpuUsage` and
+  `memoryPressure` once for the snapshot's own fields, then
+  `estimateEnergyImpact()` re-ran `getCurrentCPUUsage()` and
+  `getCurrentMemoryPressure()` to derive the energy estimate from the
+  same numbers. At 100 ms sampling rate that doubled the measurement
+  overhead — ironic for a resource *tracker*. The values are now
+  computed once and passed through. `estimateEnergyImpact()` is gone.
+- `ResourceTracker.ResourceCost.impactLevel` is now backed by a pure
+  static `impactLevel(avgCPU:estimatedEnergy:)` so the bucket boundaries
+  can be pinned without constructing a full `ResourceCost`. The
+  computed property delegates to it — same rule, same output.
+
+### Added
 - `smolTests/NaturalLanguageProcessorIntentTests.swift` — 19 tests
   pinning the bilingual (EN/IT) keyword classifier and, critically,
   the question-mark fallback path (see Fixed below). Coverage:

@@ -65,6 +65,14 @@ class ResourceTracker {
         }
 
         var impactLevel: ImpactLevel {
+            Self.impactLevel(avgCPU: avgCPU, estimatedEnergy: estimatedEnergy)
+        }
+
+        /// Pure rule extracted for testing — same boundaries as the
+        /// computed property above. `avgCPU` is %, `estimatedEnergy`
+        /// is mWh. The two thresholds use strict `<`, so a metric
+        /// exactly at the boundary falls into the *next* bucket up.
+        static func impactLevel(avgCPU: Double, estimatedEnergy: Double) -> ImpactLevel {
             if avgCPU < 30 && estimatedEnergy < 0.5 {
                 return .low
             } else if avgCPU < 70 && estimatedEnergy < 2.0 {
@@ -90,8 +98,17 @@ class ResourceTracker {
 
     // MARK: - Tracking API
 
-    /// Start tracking resources
+    /// Start tracking resources.
+    ///
+    /// Calling this while a previous session is still running (e.g.
+    /// `SmartAdvisor` and `LocalLLMEngine` both grabbing the shared
+    /// singleton at the same time) used to orphan the prior `Timer`
+    /// — the runloop kept a strong reference and it would keep
+    /// firing past the next `stopTracking` until app exit. Invalidate
+    /// up front so a re-entrant `startTracking` is safe.
     func startTracking() {
+        samplingTimer?.invalidate()
+        samplingTimer = nil
         samples = []
         tokenCounter = 0
         startSnapshot = takeSnapshot()
@@ -186,12 +203,20 @@ class ResourceTracker {
     // MARK: - Snapshot
 
     private func takeSnapshot() -> ResourceSnapshot {
+        // Each Mach call (thread enumeration, host_statistics64)
+        // costs real CPU time at our 100ms sampling rate. The prior
+        // version measured CPU *twice* per snapshot — once for the
+        // `cpuUsage` field and again inside `estimateEnergyImpact`
+        // — and memory pressure twice for the same reason. Reusing
+        // the values halves the measurement overhead.
+        let cpu = getCurrentCPUUsage()
+        let memPressure = getCurrentMemoryPressure()
         return ResourceSnapshot(
             timestamp: Date(),
-            cpuUsage: getCurrentCPUUsage(),
+            cpuUsage: cpu,
             memoryUsed: getCurrentMemoryUsage(),
-            memoryPressure: getCurrentMemoryPressure(),
-            energyImpact: estimateEnergyImpact()
+            memoryPressure: memPressure,
+            energyImpact: cpu * 0.7 + memPressure * 0.3
         )
     }
 
@@ -268,13 +293,6 @@ class ResourceTracker {
         return Double(pressureUsed) / Double(totalPhysical) * 100.0
     }
 
-    private func estimateEnergyImpact() -> Double {
-        // Estimate based on CPU and memory
-        let cpu = getCurrentCPUUsage()
-        let memPressure = getCurrentMemoryPressure()
-
-        return (cpu * 0.7 + memPressure * 0.3)
-    }
 }
 
 // MARK: - Cost Estimation Helpers
