@@ -69,30 +69,16 @@ class NaturalLanguageProcessor {
         return analyzeWithNLP(query)
     }
 
-    /// Uses NaturalLanguage framework for a lighter semantic pass.
+    /// Last-resort intent classifier when none of the bilingual
+    /// keyword sets matched. The previous version walked the NLTagger
+    /// and set `hasQuestion = true` on `.particle where word.contains("?")`,
+    /// but `?` is tagged as `.punctuation`, never `.particle` — so the
+    /// flag was dead code and Italian questions without "come" silently
+    /// fell through to `.unknown`. Checking the raw string for `?` is
+    /// simpler and actually works.
     private func analyzeWithNLP(_ query: String) -> QueryIntent {
-        let tagger = NLTagger(tagSchemes: [.lexicalClass, .nameType])
-        tagger.string = query
-
-        var hasQuestion = false
-        var topics: [String] = []
-
-        tagger.enumerateTags(in: query.startIndex..<query.endIndex, unit: .word, scheme: .lexicalClass) { tag, range in
-            if let tag = tag {
-                let word = String(query[range]).lowercased()
-                switch tag {
-                case .noun:
-                    topics.append(word)
-                case .particle where word.contains("?"):
-                    hasQuestion = true
-                default:
-                    break
-                }
-            }
-            return true
-        }
-
-        if hasQuestion || query.contains("how") || query.contains("come") {
+        let lowered = query.lowercased()
+        if query.contains("?") || lowered.contains("how") || lowered.contains("come") {
             return .generalStatus
         }
         return .unknown

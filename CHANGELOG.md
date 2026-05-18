@@ -7,6 +7,34 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/NaturalLanguageProcessorIntentTests.swift` — 19 tests
+  pinning the bilingual (EN/IT) keyword classifier and, critically,
+  the question-mark fallback path (see Fixed below). Coverage:
+  English/Italian phrasing for each of CPU / memory / temperature /
+  why-slow / what-to-close / anomaly / process intents, the proper-
+  noun extraction in the process branch, the case-insensitive "how"
+  fallback for `.generalStatus`, the `?`-detection on a query whose
+  body matches none of the keyword sets, and the gibberish fallback
+  that emits the help prompt. Suite is now 139 tests.
+
+### Fixed
+- **`NaturalLanguageProcessor.analyzeWithNLP` now detects `?`
+  questions.** The previous implementation walked NLTagger's
+  lexical-class stream looking for `case .particle where word.contains("?")`
+  to set `hasQuestion`, but `?` is tagged as `.punctuation`, never
+  `.particle` — so the flag was dead code and Italian questions
+  without a literal "come" keyword silently routed to `.unknown`.
+  The detection is now a direct `query.contains("?")` against the
+  raw string. The "how" / "come" keyword fallback also lowercases
+  the query first, so `"How are we doing"` (capital H, no question
+  mark) now correctly resolves to `.generalStatus`.
+
+### Changed
+- `NaturalLanguageProcessor.analyzeWithNLP` no longer collects the
+  `topics` array of nouns it never read. The function dropped from
+  ~25 lines of NLTagger enumeration to a three-line string check.
+
+### Added
 - `smolTests/SmartAdvisorTrendTests.swift` — 8 tests pinning the
   `SmartAdvisor.trend(in:windowMinutes:now:)` windowing logic
   (empty/single-sample → nil; descending series returns a negative
