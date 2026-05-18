@@ -7,6 +7,13 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/ProcessAnalyzerTests.swift` — 14 tests pinning the
+  suspicious-process detection rule (system-process skip, min-running
+  floor, CPU-time floor, CPU% floor, sort order, the `<` boundary at
+  exactly `minRunningMinutes`) and the bloatware match aggregation
+  (case-insensitive substring, no-match short circuit, one match per
+  bloatware entry regardless of pattern count, PID-dedup for redundant
+  patterns, multi-entry independence). Suite is now 81 tests.
 - `smolTests/SystemMonitorHealthTests.swift` — 18 tests pinning every
   rule in `SystemMonitor.calculateHealth`'s threshold ladder, every
   boundary condition (1 GB swap exact, 80% pressure exact, 80 °C exact),
@@ -16,7 +23,25 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
   pressure-warning-beats-suspicious, suspicious-beats-elevated-temperature).
   Suite is now 67 tests.
 
+### Fixed
+- **`ProcessAnalyzer.findKnownBloatware` no longer emits one match per
+  *pattern*.** The previous code looped patterns inside the bloatware
+  loop and created a fresh `BloatwareMatch` each time a pattern
+  matched anything, so an entry like Adobe Creative Cloud (5 process
+  patterns) appeared in the Alerts tab up to 5 times — each card
+  listing only the process matched by that one pattern. Matches are
+  now aggregated per bloatware entry: one `BloatwareMatch` whose
+  `runningProcesses` is the union of all matching processes (dedup by
+  PID, so a process matched by two patterns isn't counted twice) and
+  whose `totalMemoryBytes` is the corresponding sum.
+- `ProcessAnalyzer.findKnownBloatware` lowercases each process name
+  once instead of per pattern.
+
 ### Changed
+- `ProcessAnalyzer.findSuspiciousProcesses` and `findKnownBloatware`
+  were each split into a thin instance method (kernel-IO side effect
+  only) and a pure `static` variant that the new tests exercise
+  directly. The instance API is unchanged.
 - `SystemMonitor.calculateHealth` was promoted from a private instance
   method to a pure `static` function that takes its inputs explicitly
   (`memoryInfo`, `temperature`, `cpuIdlePercent`,

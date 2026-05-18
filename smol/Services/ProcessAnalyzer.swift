@@ -23,71 +23,113 @@ class ProcessAnalyzer {
     private var minRunningMinutes: Double { settings.minRunningMinutes }
     private var cpuTimeThresholdMinutes: Double { settings.cpuTimeThreshold }
 
-    /// Find processes consuming resources abnormally
+    /// Find processes consuming resources abnormally.
+    /// Thin wrapper around the pure static so the kernel-IO side-effect
+    /// (`getProcessList()`) is the only thing in the instance method.
     func findSuspiciousProcesses() -> [ProcessInfo] {
+        Self.findSuspiciousProcesses(
+            in: cpuMonitor.getProcessList(),
+            cpuThresholdPercent: cpuThresholdPercent,
+            minRunningMinutes: minRunningMinutes,
+            cpuTimeThresholdMinutes: cpuTimeThresholdMinutes,
+            now: Date(),
+            skipping: systemProcesses
+        )
+    }
+
+    /// Pure variant of `findSuspiciousProcesses()`. Testable without
+    /// `proc_listallpids`. The detection rule mirrors the original —
+    /// long-running process with high *average* CPU since start, above
+    /// the configured CPU-time floor.
+    static func findSuspiciousProcesses(
+        in processes: [ProcessBasicInfo],
+        cpuThresholdPercent: Double,
+        minRunningMinutes: Double,
+        cpuTimeThresholdMinutes: Double,
+        now: Date,
+        skipping systemProcesses: Set<String>
+    ) -> [ProcessInfo] {
         var suspicious: [ProcessInfo] = []
-        let processes = cpuMonitor.getProcessList()
-        let now = Date()
 
         for proc in processes {
-            // Skip system processes
-            if systemProcesses.contains(proc.name) {
-                continue
-            }
+            if systemProcesses.contains(proc.name) { continue }
 
-            // Skip processes that started too recently
             let runningMinutes = now.timeIntervalSince(proc.startTime) / 60
-            if runningMinutes < minRunningMinutes {
-                continue
-            }
+            if runningMinutes < minRunningMinutes { continue }
 
-            // Calculate average CPU % based on CPU time and running time
             let cpuTimeMinutes = proc.cpuTimeSeconds / 60
             let cpuPercent = (cpuTimeMinutes / runningMinutes) * 100
 
-            // Process is suspicious if:
-            // 1. Has consumed a lot of CPU time (like Logitech running for 10 months)
-            // 2. High average CPU % for a long-running process
-            let isSuspicious = cpuTimeMinutes > cpuTimeThresholdMinutes &&
-                               cpuPercent > cpuThresholdPercent
+            // Suspicious = consumed a lot of CPU time over its lifetime
+            // AND that averages out to a high CPU%. The runaway-Logitech
+            // case is the canonical example.
+            guard cpuTimeMinutes > cpuTimeThresholdMinutes,
+                  cpuPercent > cpuThresholdPercent else { continue }
 
-            if isSuspicious {
-                let processInfo = ProcessInfo(
-                    id: proc.pid,
-                    name: proc.name,
-                    cpuPercent: cpuPercent,
-                    memoryBytes: proc.memoryBytes,
-                    startTime: proc.startTime,
-                    cpuTimeMinutes: cpuTimeMinutes
-                )
-                suspicious.append(processInfo)
-            }
+            suspicious.append(ProcessInfo(
+                id: proc.pid,
+                name: proc.name,
+                cpuPercent: cpuPercent,
+                memoryBytes: proc.memoryBytes,
+                startTime: proc.startTime,
+                cpuTimeMinutes: cpuTimeMinutes
+            ))
         }
 
-        // Sort by CPU % descending
         return suspicious.sorted { $0.cpuPercent > $1.cpuPercent }
     }
 
-    /// Find processes known as bloatware
+    /// Find processes known as bloatware. Thin wrapper around the pure
+    /// static — `getProcessList()` is the only side effect.
     func findKnownBloatware() -> [BloatwareMatch] {
+        Self.findKnownBloatware(
+            in: cpuMonitor.getProcessList(),
+            knownBloatware: loadKnownBloatware()
+        )
+    }
+
+    /// Pure variant of `findKnownBloatware()`. Aggregates **per bloatware
+    /// entry**, not per pattern — the previous implementation produced
+    /// one `BloatwareMatch` per matching pattern, so an entry like Adobe
+    /// Creative Cloud (5 process patterns) appeared up to 5 times in the
+    /// Alerts tab, each card containing only the process matched by that
+    /// one pattern. Now every entry collapses into a single match whose
+    /// `runningProcesses` is the union and `totalMemoryBytes` is the
+    /// sum, deduplicated by PID so a process matched by two patterns
+    /// isn't counted twice.
+    ///
+    /// All matching is case-insensitive substring (`processName.contains
+    /// (pattern)`), preserved from the previous behaviour. Lower-cased
+    /// process names are computed once instead of per pattern.
+    static func findKnownBloatware(
+        in processes: [ProcessBasicInfo],
+        knownBloatware: [KnownBloatware]
+    ) -> [BloatwareMatch] {
+        let loweredProcesses: [(name: String, lowered: String, pid: Int32, memory: UInt64)] =
+            processes.map { ($0.name, $0.name.lowercased(), $0.pid, $0.memoryBytes) }
+
         var matches: [BloatwareMatch] = []
-        let processes = cpuMonitor.getProcessList()
-        let knownBloatware = loadKnownBloatware()
 
         for bloatware in knownBloatware {
-            for pattern in bloatware.processes {
-                let matchingProcs = processes.filter {
-                    $0.name.lowercased().contains(pattern.lowercased())
-                }
+            let loweredPatterns = bloatware.processes.map { $0.lowercased() }
+            var matchedPIDs = Set<Int32>()
+            var names: [String] = []
+            var totalMemory: UInt64 = 0
 
-                if !matchingProcs.isEmpty {
-                    let match = BloatwareMatch(
-                        bloatware: bloatware,
-                        runningProcesses: matchingProcs.map { $0.name },
-                        totalMemoryBytes: matchingProcs.reduce(0) { $0 + $1.memoryBytes }
-                    )
-                    matches.append(match)
+            for proc in loweredProcesses {
+                guard loweredPatterns.contains(where: { proc.lowered.contains($0) }) else { continue }
+                if matchedPIDs.insert(proc.pid).inserted {
+                    names.append(proc.name)
+                    totalMemory += proc.memory
                 }
+            }
+
+            if !matchedPIDs.isEmpty {
+                matches.append(BloatwareMatch(
+                    bloatware: bloatware,
+                    runningProcesses: names,
+                    totalMemoryBytes: totalMemory
+                ))
             }
         }
 
