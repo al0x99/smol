@@ -7,6 +7,11 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/CPUMonitorTests.swift` — 8 tests pinning the pure idle-
+  percentage formula (first-call lifetime fallback, half-idle, full
+  idle, full busy, idle-delta-exceeding-total clamp, counter-reset
+  wrap safety, no-change-between-samples fallback). Suite is now 95
+  tests.
 - `smolTests/MemoryMonitorTests.swift` — 7 tests pinning the
   compression-ratio → pressure mapping, including the regression guard
   for the bug below (10% compression on a healthy machine must NOT
@@ -28,6 +33,22 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
   Suite is now 67 tests.
 
 ### Fixed
+- **`CPUMonitor.getIdlePercent` no longer leaks the
+  `host_processor_info` buffer.** The previous code placed the
+  `vm_deallocate` call *between* two return paths, so the first-reading
+  early return (taken on every fresh launch) silently leaked the
+  allocation. Deallocation is now in a `defer` block right after the
+  guard, so every path frees the buffer exactly once.
+- `CPUMonitor.getProcessList` now clamps `actualCount` to the allocated
+  buffer length. If the process table grew between the size-probing
+  `sysctl` call and the data-fetching `sysctl` call, the kernel could
+  in theory report more bytes than the buffer holds; the clamp
+  prevents the resulting out-of-bounds read.
+- `CPUMonitor.getIdlePercent` is now defended against
+  `previousTotal > currentTotal` (Mach counter reset on sleep/resume).
+  The pure `idlePercent(...)` helper uses wrapping subtraction and
+  clamps to [0, 100] so the menu bar never displays a negative or
+  >100% value.
 - **Memory pressure no longer pinned at ≥50% on long-uptime machines.**
   `MemoryMonitor.getMemoryPressurePercent()` previously added
   `min(50, stats.pageouts / 1000)` to the compression ratio — but
@@ -53,6 +74,11 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
   once instead of per pattern.
 
 ### Changed
+- `CPUMonitor.getIdlePercent` was refactored to delegate its arithmetic
+  to a pure `static idlePercent(currentIdle: currentTotal: previousIdle:
+  previousTotal:)` so the formula can be unit-tested without a Mach
+  call. The kernel side effect (`host_processor_info`) remains in the
+  instance method.
 - `ProcessAnalyzer.findSuspiciousProcesses` and `findKnownBloatware`
   were each split into a thin instance method (kernel-IO side effect
   only) and a pure `static` variant that the new tests exercise

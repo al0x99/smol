@@ -24,6 +24,17 @@ class CPUMonitor {
             return 100 // Default to idle on error
         }
 
+        // `host_processor_info` allocates the cpuInfo buffer on our
+        // behalf. The previous code freed it inline between two return
+        // paths, which leaked the buffer on the first-reading early
+        // return — and that path runs on every fresh launch. A `defer`
+        // guarantees the deallocation regardless of which return path
+        // we take.
+        defer {
+            let size = vm_size_t(numCpuInfo) * vm_size_t(MemoryLayout<integer_t>.stride)
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), size)
+        }
+
         var totalUser: UInt64 = 0
         var totalSystem: UInt64 = 0
         var totalIdle: UInt64 = 0
@@ -38,24 +49,45 @@ class CPUMonitor {
         }
 
         let totalTime = totalUser + totalSystem + totalIdle + totalNice
-
-        // Calculate delta from previous sample
-        let idleDelta = totalIdle - previousIdleTime
-        let totalDelta = totalTime - previousTotalTime
+        let percent = Self.idlePercent(
+            currentIdle: totalIdle,
+            currentTotal: totalTime,
+            previousIdle: previousIdleTime,
+            previousTotal: previousTotalTime
+        )
 
         previousIdleTime = totalIdle
         previousTotalTime = totalTime
+        return percent
+    }
 
-        // First reading: return estimate based on absolute values
-        if totalDelta == 0 {
-            return Double(totalIdle) / Double(totalTime) * 100
+    /// Pure mapping from cumulative-tick counters to the instantaneous
+    /// idle percentage. On the first call the deltas are zero and the
+    /// snapshot is meaningless, so we fall back to the lifetime
+    /// average — one tick of "off" reading before the delta-based
+    /// values stabilise, which is fine for a 2 s polling widget.
+    static func idlePercent(
+        currentIdle: UInt64,
+        currentTotal: UInt64,
+        previousIdle: UInt64,
+        previousTotal: UInt64
+    ) -> Double {
+        let totalDelta = currentTotal &- previousTotal
+        let idleDelta = currentIdle &- previousIdle
+
+        guard totalDelta > 0 else {
+            // First reading after launch (or counter wrap, which on
+            // 64-bit Mach tick counters won't realistically happen).
+            // Use the lifetime average as a best-effort seed.
+            return currentTotal > 0
+                ? Double(currentIdle) / Double(currentTotal) * 100
+                : 100
         }
 
-        // Deallocate memory
-        let size = vm_size_t(numCpuInfo) * vm_size_t(MemoryLayout<integer_t>.stride)
-        vm_deallocate(mach_task_self_, vm_address_t(bitPattern: cpuInfo), size)
-
-        return Double(idleDelta) / Double(totalDelta) * 100
+        // idleDelta can briefly exceed totalDelta on aggressive
+        // power-state transitions; clamp so the UI never shows >100%.
+        let raw = Double(idleDelta) / Double(totalDelta) * 100
+        return min(100, max(0, raw))
     }
 
     /// Returns list of processes with CPU info
@@ -80,7 +112,12 @@ class CPUMonitor {
             return []
         }
 
-        let actualCount = size / MemoryLayout<kinfo_proc>.stride
+        // Bound by the allocated buffer size. `sysctl` updates `size`
+        // to the bytes it actually wrote, but on Darwin if the process
+        // table grew between the two sysctl calls it can in theory
+        // report more bytes than the buffer holds. Clamping prevents an
+        // out-of-bounds read in that race.
+        let actualCount = min(size / MemoryLayout<kinfo_proc>.stride, count)
 
         for i in 0..<actualCount {
             let proc = procs[i]
