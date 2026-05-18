@@ -1,5 +1,6 @@
-import Foundation
 import Combine
+import Foundation
+import UserNotifications
 
 /// Main system monitoring orchestrator
 @MainActor
@@ -135,13 +136,39 @@ class SystemMonitor: ObservableObject {
         fans = fanMonitor.getAllFans()
 
         // Calculate overall health
-        health = calculateHealth()
+        health = Self.calculateHealth(
+            memoryInfo: memoryInfo,
+            temperature: temperature,
+            cpuIdlePercent: cpuIdlePercent,
+            suspiciousProcessCount: suspiciousProcesses.count
+        )
 
         // Generate alerts if necessary
         checkForNewAlerts()
     }
 
-    private func calculateHealth() -> SystemHealth {
+    /// Pure, side-effect-free health classifier. Extracted from
+    /// `updateMetrics()` so the threshold ladder can be unit-tested
+    /// without standing up a real `SystemMonitor` (which would also start
+    /// the polling `Timer`). The argument order mirrors the order of
+    /// signals in the menu-bar widget — CPU/memory first, then
+    /// temperature, then process anomalies.
+    ///
+    /// Rules, evaluated top-to-bottom, first match wins:
+    /// 1. swap > 1 GB                          → critical "Heavy swap …"
+    /// 2. memory pressure > 80%                → critical "Memory pressure critical …"
+    /// 3. temp > 95 °C AND CPU idle > 70%      → critical "Hot at idle …"
+    /// 4. any swap                             → warning "Swap in use"
+    /// 5. memory pressure > 50%                → warning "Memory pressure medium"
+    /// 6. ≥1 suspicious process                → warning "<n> suspicious process(es)"
+    /// 7. temp > 80 °C AND CPU idle > 50%      → warning "Elevated temperature"
+    /// 8. otherwise                            → healthy
+    static func calculateHealth(
+        memoryInfo: MemoryInfo,
+        temperature: Double,
+        cpuIdlePercent: Double,
+        suspiciousProcessCount: Int
+    ) -> SystemHealth {
         // Critical: heavy swap, critical memory pressure, or hot at idle.
         if memoryInfo.swapUsed > 1_000_000_000 { // > 1 GB swap
             return .critical(reason: "Heavy swap: \(ByteCountFormatter.string(fromByteCount: Int64(memoryInfo.swapUsed), countStyle: .memory))")
@@ -164,9 +191,9 @@ class SystemMonitor: ObservableObject {
             return .warning(reason: "Memory pressure medium")
         }
 
-        if !suspiciousProcesses.isEmpty {
-            let noun = suspiciousProcesses.count == 1 ? "suspicious process" : "suspicious processes"
-            return .warning(reason: "\(suspiciousProcesses.count) \(noun)")
+        if suspiciousProcessCount > 0 {
+            let noun = suspiciousProcessCount == 1 ? "suspicious process" : "suspicious processes"
+            return .warning(reason: "\(suspiciousProcessCount) \(noun)")
         }
 
         if temperature > 80 && cpuIdlePercent > 50 {
@@ -205,5 +232,3 @@ class SystemMonitor: ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
 }
-
-import UserNotifications

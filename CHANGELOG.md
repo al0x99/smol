@@ -6,7 +6,27 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
 ## [Unreleased]
 
+### Added
+- `smolTests/SystemMonitorHealthTests.swift` — 18 tests pinning every
+  rule in `SystemMonitor.calculateHealth`'s threshold ladder, every
+  boundary condition (1 GB swap exact, 80% pressure exact, 80 °C exact),
+  the singular/plural grammar for the suspicious-process count, and the
+  priority ordering between competing rules (heavy-swap-beats-pressure,
+  critical-memory-beats-hot-at-idle, swap-warning-beats-pressure-warning,
+  pressure-warning-beats-suspicious, suspicious-beats-elevated-temperature).
+  Suite is now 67 tests.
+
 ### Changed
+- `SystemMonitor.calculateHealth` was promoted from a private instance
+  method to a pure `static` function that takes its inputs explicitly
+  (`memoryInfo`, `temperature`, `cpuIdlePercent`,
+  `suspiciousProcessCount`). The threshold ladder is now testable
+  without standing up a real `SystemMonitor` (which would also kick off
+  its 2-second polling Timer). The single in-app caller in
+  `updateMetrics()` is otherwise unchanged.
+- Moved `import UserNotifications` to the top of `SystemMonitor.swift`.
+  It was the only `import` statement floating at the bottom of any
+  service file in the project.
 - `TemperatureMonitor` is now pinned to `@MainActor`. Every caller (the
   menu-bar `SystemMonitor` timer and the `TemperatureTab` view) already
   runs on the main actor, and the prior implementation had no
