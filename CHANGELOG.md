@@ -7,6 +7,47 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/MLAnomalyEngineTests.swift` — 23 tests across three
+  structs covering the pure decision logic that runs around the Core
+  ML / Create ML inference: `MLAnomalyEngineClassifyTests` (8) pins
+  every combination of the three boolean anomaly flags through
+  `classifyAnomaly`, including the four `.combined` cases where the
+  prior sequential-overwrite implementation would have landed on the
+  wrong type before the count-based fix kicked in;
+  `MLAnomalyEngineConfidenceTests` (7) pins `mlConfidence` at both
+  ends of the deviation axis for the anomaly and non-anomaly
+  branches, with the headline test being the regression check for
+  deviations > 1.0 in the non-anomaly branch (the bug fixed below);
+  `MLAnomalyEngineHeuristicTests` (8) pins the strict-`>` boundary at
+  CPU=85, memory=80, temp=90, the `.combined` collapse for any 2+
+  signals, and the predicted-values-echo-inputs contract that
+  downstream expected-range badges depend on. Suite is now 184 tests.
+
+### Fixed
+- **`MLAnomalyEngine.predict` no longer publishes negative confidence
+  values when the trained model misfires.** The formula was
+  `isAnomaly ? min(maxDeviation*2, 1) : 1 - maxDeviation`. When the
+  model produced a wildly-off prediction whose absolute deviation
+  was above 1.0 but the actual metric didn't cross the anomaly
+  threshold (e.g. predicted CPU 200%, actual 0% → deviation 200/100
+  = 2.0, but `cpu > 70` is false so `isAnomaly = false`), the
+  non-anomaly branch evaluated to `1 - 2.0 = -1.0` and that negative
+  value flowed into `AnomalyPrediction.confidence` and eventually
+  into the `AIAnomaly.confidence` shown to the user. The confidence
+  is now clamped to `[0, 1]` via the extracted `mlConfidence` static.
+
+### Changed
+- `MLAnomalyEngine`'s anomaly-type priority rule lives in one place
+  now. The ML path (lines ~370) and the heuristic path (lines ~405)
+  both used the same sequential-overwrite-then-fix-with-`.combined`
+  pattern, which was hard to read and impossible to test without
+  spinning up the full `predict` flow. Both paths now call the same
+  `classifyAnomaly(cpuAnomaly:memAnomaly:tempAnomaly:)` static.
+- `MLAnomalyEngine.heuristicPrediction` is `nonisolated static`, so
+  unit tests don't have to hop to `@MainActor` or carry the
+  engine's training-data state.
+
+### Added
 - `smolTests/ResourceTrackerTests.swift` — 22 tests across three
   structs covering the parts of `ResourceTracker` that don't depend on
   the live sampling Timer: `ResourceCostImpactLevelTests` (11) pins

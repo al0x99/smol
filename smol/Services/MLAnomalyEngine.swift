@@ -329,7 +329,7 @@ class MLAnomalyEngine: ObservableObject {
               let cpuModel = cpuModel,
               let memoryModel = memoryModel,
               let temperatureModel = temperatureModel else {
-            return heuristicPrediction(cpu: cpu, memory: memory, temp: temp)
+            return Self.heuristicPrediction(cpu: cpu, memory: memory, temp: temp)
         }
 
         let calendar = Calendar.current
@@ -365,16 +365,14 @@ class MLAnomalyEngine: ObservableObject {
             let tempAnomaly = tempDeviation > 15 && temp > 75
 
             let isAnomaly = cpuAnomaly || memAnomaly || tempAnomaly
-
-            var anomalyType: AnomalyPrediction.AnomalyType?
-            var anomalyCount = 0
-            if cpuAnomaly { anomalyType = .cpuSpike; anomalyCount += 1 }
-            if memAnomaly { anomalyType = .memoryLeak; anomalyCount += 1 }
-            if tempAnomaly { anomalyType = .thermalThrottling; anomalyCount += 1 }
-            if anomalyCount > 1 { anomalyType = .combined }
+            let anomalyType = Self.classifyAnomaly(
+                cpuAnomaly: cpuAnomaly,
+                memAnomaly: memAnomaly,
+                tempAnomaly: tempAnomaly
+            )
 
             let maxDeviation = max(cpuDeviation / 100, memDeviation / 100, tempDeviation / 100)
-            let confidence = isAnomaly ? min(maxDeviation * 2, 1.0) : 1 - maxDeviation
+            let confidence = Self.mlConfidence(maxDeviation: maxDeviation, isAnomaly: isAnomaly)
 
             let prediction = AnomalyPrediction(
                 isAnomaly: isAnomaly,
@@ -389,25 +387,24 @@ class MLAnomalyEngine: ObservableObject {
             return prediction
 
         } catch {
-            return heuristicPrediction(cpu: cpu, memory: memory, temp: temp)
+            return Self.heuristicPrediction(cpu: cpu, memory: memory, temp: temp)
         }
     }
 
-    /// Heuristic prediction (fallback without model)
-    private func heuristicPrediction(cpu: Double, memory: Double, temp: Double) -> AnomalyPrediction {
+    /// Heuristic prediction (fallback without model).
+    /// Exposed as `nonisolated static` so unit tests can pin the rule
+    /// without spinning up the @MainActor class or its training state.
+    nonisolated static func heuristicPrediction(cpu: Double, memory: Double, temp: Double) -> AnomalyPrediction {
         let cpuAnomaly = cpu > 85
         let memAnomaly = memory > 80
         let tempAnomaly = temp > 90
 
         let isAnomaly = cpuAnomaly || memAnomaly || tempAnomaly
-
-        var anomalyType: AnomalyPrediction.AnomalyType?
-        if cpuAnomaly { anomalyType = .cpuSpike }
-        if memAnomaly { anomalyType = .memoryLeak }
-        if tempAnomaly { anomalyType = .thermalThrottling }
-        if [cpuAnomaly, memAnomaly, tempAnomaly].filter({ $0 }).count > 1 {
-            anomalyType = .combined
-        }
+        let anomalyType = classifyAnomaly(
+            cpuAnomaly: cpuAnomaly,
+            memAnomaly: memAnomaly,
+            tempAnomaly: tempAnomaly
+        )
 
         return AnomalyPrediction(
             isAnomaly: isAnomaly,
@@ -417,6 +414,43 @@ class MLAnomalyEngine: ObservableObject {
             predictedMemory: memory,
             predictedTemp: temp
         )
+    }
+
+    /// Pick the right `AnomalyType` from three boolean flags.
+    /// Two or more flags → `.combined`; one flag → that flag's type;
+    /// none → `nil`. The prior implementation used sequential
+    /// assignments (`if cpuAnomaly { type = .cpuSpike }; if memAnomaly
+    /// { type = .memoryLeak }; …`) plus a count-based `.combined`
+    /// override at the bottom — same behavior, just much harder to
+    /// follow and impossible to test without recreating the entire
+    /// `predict` flow.
+    nonisolated static func classifyAnomaly(
+        cpuAnomaly: Bool,
+        memAnomaly: Bool,
+        tempAnomaly: Bool
+    ) -> AnomalyPrediction.AnomalyType? {
+        let activeCount = [cpuAnomaly, memAnomaly, tempAnomaly].filter { $0 }.count
+        if activeCount > 1 { return .combined }
+        if cpuAnomaly { return .cpuSpike }
+        if memAnomaly { return .memoryLeak }
+        if tempAnomaly { return .thermalThrottling }
+        return nil
+    }
+
+    /// Confidence score for the ML branch, clamped to `[0, 1]`.
+    ///
+    /// The previous formula was `isAnomaly ? min(maxDeviation*2, 1) :
+    /// 1 - maxDeviation`. When the model produced a wildly-off
+    /// prediction whose absolute error was below the anomaly
+    /// threshold (e.g. predicted CPU 200%, actual 0% → deviation
+    /// 200, but `cpu > 70` is false so `isAnomaly = false`), the
+    /// non-anomaly branch went `1 - 2.0 = -1.0` and that negative
+    /// number flowed straight to `AIAnomaly.confidence` and the UI.
+    /// Clamping fixes the symptom; the underlying noisy-model issue
+    /// is left to the model trainer.
+    nonisolated static func mlConfidence(maxDeviation: Double, isAnomaly: Bool) -> Double {
+        let raw = isAnomaly ? maxDeviation * 2 : 1 - maxDeviation
+        return max(0, min(1, raw))
     }
 
     // MARK: - Persistence
