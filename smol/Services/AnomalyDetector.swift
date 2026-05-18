@@ -62,6 +62,13 @@ class AnomalyDetector {
         let zScore = (lastValue - stats.mean) / max(stats.stdDev, 1)
 
         if zScore > anomalyThreshold && lastValue > 80 {
+            // Build the expected range defensively: clamping the two
+            // endpoints independently to [0, 100] can produce
+            // `lower > upper` for pathological inputs (mean > 100 with
+            // a small stdDev), which would trap `ClosedRange.init`.
+            // We collapse such cases to a single-point range.
+            let lower = max(0, stats.mean - stats.stdDev * 2)
+            let upper = min(100, stats.mean + stats.stdDev * 2)
             return AIAnomaly(
                 type: .cpuSpike,
                 description: "CPU spike: \(Int(lastValue))% (average: \(Int(stats.mean))%)",
@@ -69,7 +76,7 @@ class AnomalyDetector {
                 confidence: min(zScore / 4, 1.0),
                 relatedMetric: "CPU Usage",
                 currentValue: lastValue,
-                expectedRange: max(0, stats.mean - stats.stdDev * 2)...min(100, stats.mean + stats.stdDev * 2)
+                expectedRange: lower...max(lower, upper)
             )
         }
 
@@ -99,44 +106,59 @@ class AnomalyDetector {
         return nil
     }
 
-    /// Detect memory leak pattern using linear regression
+    /// Detect memory leak pattern using linear regression on the last
+    /// 60 samples (~2 min at the 2 s polling cadence). Returns the
+    /// R² goodness-of-fit when the slope crosses the leak threshold,
+    /// `nil` otherwise. The threshold (0.1% per sample ≈ 3% per minute
+    /// of compression pressure growth) is the same one the live engine
+    /// uses to surface a `.memoryLeak` anomaly.
     private func detectMemoryLeak(_ values: [Double]) -> Double? {
         guard values.count >= 20 else { return nil }
-
-        // Take last N values
         let recentValues = Array(values.suffix(60))
 
-        // Calculate slope using linear regression
-        let n = Double(recentValues.count)
+        guard let fit = Self.linearRegressionFit(recentValues), fit.slope > 0.1 else {
+            return nil
+        }
+        return fit.rSquared
+    }
+
+    /// Pure least-squares fit over `y` vs the index `0..<n`. Returns
+    /// `(slope, rSquared)` or `nil` if there are fewer than two samples.
+    /// R² is clamped to [0, 1] to absorb floating-point drift — a
+    /// least-squares slope guarantees ssRes ≤ ssTot analytically, but
+    /// near-constant series can produce a tiny negative R² in practice.
+    /// For a flat input (`ssTot == 0`) we conventionally return R² = 0,
+    /// matching the prior implementation.
+    static func linearRegressionFit(_ values: [Double]) -> (slope: Double, rSquared: Double)? {
+        guard values.count >= 2 else { return nil }
+
+        let n = Double(values.count)
         let xMean = (n - 1) / 2
-        let yMean = recentValues.reduce(0, +) / n
+        let yMean = values.reduce(0, +) / n
 
         var numerator = 0.0
         var denominator = 0.0
-
-        for (i, y) in recentValues.enumerated() {
+        for (i, y) in values.enumerated() {
             let x = Double(i)
             numerator += (x - xMean) * (y - yMean)
             denominator += (x - xMean) * (x - xMean)
         }
 
-        let slope = denominator > 0 ? numerator / denominator : 0
+        // `denominator` is the sum of squared deviations of indices,
+        // which is strictly positive for n ≥ 2 — but compute defensively.
+        guard denominator > 0 else { return nil }
+        let slope = numerator / denominator
+        let intercept = yMean - slope * xMean
 
-        // If slope > 0.1 per sample (0.1% per 2 seconds = 3% per minute), possible leak
-        if slope > 0.1 {
-            // Confidence based on R-squared
-            var ssRes = 0.0
-            var ssTot = 0.0
-            for (i, y) in recentValues.enumerated() {
-                let predicted = slope * Double(i) + (yMean - slope * xMean)
-                ssRes += (y - predicted) * (y - predicted)
-                ssTot += (y - yMean) * (y - yMean)
-            }
-            let rSquared = ssTot > 0 ? 1 - (ssRes / ssTot) : 0
-            return rSquared
+        var ssRes = 0.0
+        var ssTot = 0.0
+        for (i, y) in values.enumerated() {
+            let predicted = slope * Double(i) + intercept
+            ssRes += (y - predicted) * (y - predicted)
+            ssTot += (y - yMean) * (y - yMean)
         }
-
-        return nil
+        let rawRSquared = ssTot > 0 ? 1 - (ssRes / ssTot) : 0
+        return (slope, max(0, min(1, rawRSquared)))
     }
 
     // MARK: - Temperature Analysis
@@ -212,16 +234,28 @@ class AnomalyDetector {
         return anomalies
     }
 
-    /// Detect oscillations in the signal
+    /// Detect oscillations in the signal — wraps the pure
+    /// `oscillationScore` static with the engine's calibrated 10-unit
+    /// "significant change" threshold.
     private func detectOscillation(_ values: [Double]) -> Double {
         guard values.count >= 10 else { return 0 }
+        return Self.oscillationScore(values, minChangeMagnitude: 10)
+    }
+
+    /// Count direction reversals among "significant" sample-to-sample
+    /// jumps (those whose magnitude exceeds `minChangeMagnitude`) and
+    /// normalise to [0, 1] — 5+ reversals saturate the score. Smaller
+    /// fluctuations are ignored so that micro-noise on a stable signal
+    /// doesn't masquerade as oscillation.
+    static func oscillationScore(_ values: [Double], minChangeMagnitude: Double) -> Double {
+        guard values.count >= 2 else { return 0 }
 
         var changes = 0
         var previousDirection: Int? = nil
 
         for i in 1..<values.count {
-            let diff = values[i] - values[i-1]
-            if abs(diff) > 10 { // Minimum 10% change
+            let diff = values[i] - values[i - 1]
+            if abs(diff) > minChangeMagnitude {
                 let direction = diff > 0 ? 1 : -1
                 if let prev = previousDirection, prev != direction {
                     changes += 1
@@ -230,7 +264,6 @@ class AnomalyDetector {
             }
         }
 
-        // Normalize: more than 5 direction changes in 20 samples = oscillation
         return min(Double(changes) / 5.0, 1.0)
     }
 

@@ -7,6 +7,39 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/AnomalyDetectorTests.swift` — 16 tests covering the two
+  pure transforms behind the Anomalies tab: the slope+R² fit used by
+  the "memory pressure keeps climbing" leak heuristic, and the
+  direction-reversal counter that flags processes repeatedly starting
+  and stopping. Includes regression guards for the edge cases that
+  would otherwise misbehave silently — `[]` and `[42]` returning `nil`
+  for the regression fit, a constant series returning slope 0 with
+  R² = 0, R² clamped to [0, 1] regardless of input, the
+  oscillation-magnitude threshold correctly ignoring sub-threshold
+  jitter, and the 5-reversal saturation. Suite is now 112 tests.
+
+### Fixed
+- **`AnomalyDetector.detectCPUAnomaly` no longer risks trapping on a
+  malformed `ClosedRange`.** The `expectedRange` was built as
+  `max(0, mean - 2σ) ... min(100, mean + 2σ)`. For pathological inputs
+  where the rolling mean exceeds 100% (a defensive edge case rather
+  than something we observe in the wild) the lower bound could end up
+  greater than the upper bound, and `ClosedRange.init` would trap. The
+  endpoints are now ordered before constructing the range.
+- `AnomalyDetector.linearRegressionFit` clamps R² to [0, 1]. The
+  least-squares slope guarantees `ssRes ≤ ssTot` analytically, but
+  near-constant series can drift slightly outside the valid interval
+  in IEEE 754, and that value is published downstream as
+  `AIAnomaly.confidence`.
+
+### Changed
+- `AnomalyDetector.detectMemoryLeak` and `detectOscillation` now
+  delegate to two pure statics — `linearRegressionFit(_:)` and
+  `oscillationScore(_:minChangeMagnitude:)` — so the math is testable
+  without instantiating the detector or providing 30+ sample fixtures.
+  The instance API is unchanged.
+
+### Added
 - `smolTests/CPUMonitorTests.swift` — 8 tests pinning the pure idle-
   percentage formula (first-call lifetime fallback, half-idle, full
   idle, full busy, idle-delta-exceeding-total clamp, counter-reset
