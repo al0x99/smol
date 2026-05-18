@@ -55,6 +55,26 @@ class SystemReportGenerator {
         tempHistory: [AIDataPoint],
         anomalies: [AIAnomaly]
     ) -> Int {
+        Self.calculateHealthScore(
+            cpuHistory: cpuHistory,
+            memoryHistory: memoryHistory,
+            tempHistory: tempHistory,
+            anomalies: anomalies
+        )
+    }
+
+    /// Pure rule extracted from `calculateHealthScore`. Starts at
+    /// 100 and deducts: 25/15/5 for avg CPU > 80/60/40 (mirrored
+    /// for memory at the same bands and temp at 90/80/70), 10
+    /// per anomaly with confidence > 0.8, 5 per anomaly with
+    /// confidence in `(0.5, 0.8]`. Clamped to `[0, 100]`.
+    /// Empty histories contribute zero deduction.
+    static func calculateHealthScore(
+        cpuHistory: [AIDataPoint],
+        memoryHistory: [AIDataPoint],
+        tempHistory: [AIDataPoint],
+        anomalies: [AIAnomaly]
+    ) -> Int {
         var score = 100
 
         if let avgCPU = average(cpuHistory) {
@@ -75,6 +95,10 @@ class SystemReportGenerator {
             else if avgTemp > 70 { score -= 5 }
         }
 
+        // Bands are disjoint by the `<= 0.8` upper bound on
+        // warning — an anomaly at exactly 0.8 is counted once as
+        // a warning, never as a critical. Flipping this to `< 0.8`
+        // would silently drop the at-the-boundary anomaly entirely.
         let criticalAnomalies = anomalies.filter { $0.confidence > 0.8 }.count
         let warningAnomalies = anomalies.filter { $0.confidence > 0.5 && $0.confidence <= 0.8 }.count
         score -= criticalAnomalies * 10
@@ -83,23 +107,33 @@ class SystemReportGenerator {
         return max(0, min(100, score))
     }
 
-    private func average(_ dataPoints: [AIDataPoint]) -> Double? {
+    /// Maps a numeric health score to the textual band the
+    /// summary line uses. Boundaries are inclusive-low: 90 is
+    /// "excellent", 70 is "good", 50 is "moderate", 30 is "poor",
+    /// anything below 30 is "critical".
+    static func healthStatusLabel(forScore score: Int) -> String {
+        switch score {
+        case 90...100: return "excellent"
+        case 70..<90:  return "good"
+        case 50..<70:  return "moderate"
+        case 30..<50:  return "poor"
+        default:       return "critical"
+        }
+    }
+
+    private static func average(_ dataPoints: [AIDataPoint]) -> Double? {
         guard !dataPoints.isEmpty else { return nil }
         return dataPoints.map { $0.value }.reduce(0, +) / Double(dataPoints.count)
+    }
+
+    private func average(_ dataPoints: [AIDataPoint]) -> Double? {
+        Self.average(dataPoints)
     }
 
     // MARK: - Summary
 
     private func generateSummary(healthScore: Int, advice: [AIAdvice], anomalies: [AIAnomaly]) -> String {
-        let healthStatus: String
-        switch healthScore {
-        case 90...100: healthStatus = "excellent"
-        case 70..<90:  healthStatus = "good"
-        case 50..<70:  healthStatus = "moderate"
-        case 30..<50:  healthStatus = "poor"
-        default:       healthStatus = "critical"
-        }
-
+        let healthStatus = Self.healthStatusLabel(forScore: healthScore)
         var summary = "System status: \(healthStatus) (score: \(healthScore)/100). "
 
         let criticalCount = advice.filter { $0.severity == .critical }.count
@@ -330,10 +364,16 @@ class SystemReportGenerator {
             }
         }
 
+        // The trailing newline below is load-bearing — Swift's
+        // multi-line literals strip the newline immediately before
+        // the closing `"""`, so without an explicit blank line the
+        // first recommendation rendered as
+        // "────────────────1. First rec" glued to the underline.
         text += """
 
         RECOMMENDATIONS
         ────────────────
+
         """
         for (i, rec) in report.recommendations.enumerated() {
             text += "\(i + 1). \(rec)\n"

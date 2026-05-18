@@ -7,6 +7,43 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/SystemReportGeneratorTests.swift` — 19 tests across
+  three structs: `SystemReportHealthScoreTests` (10) pins each CPU /
+  memory / temp deduction band at the exact boundary (40/60/80 for
+  CPU and memory, 70/80/90 for temp), the disjoint critical/warning
+  anomaly bands including the load-bearing `<= 0.8` upper bound on
+  warning and the `> 0.5` lower bound, and the `[0, 100]` clamp;
+  `SystemReportHealthStatusLabelTests` (6) pins every excellent /
+  good / moderate / poor / critical label at its inclusive low
+  bound, including the 89 → "good" inclusive upper bound below
+  "excellent"; `SystemReportExportAsTextTests` (3) covers the
+  RECOMMENDATIONS-underline regression (see Fixed below), 1-based
+  recommendation numbering, and the "Health score: N/100" line that
+  ships in user-copy-pastable exports. Suite is now 222 tests.
+
+### Fixed
+- **`SystemReportGenerator.exportAsText` no longer glues the first
+  recommendation to the underline.** The RECOMMENDATIONS heading
+  was emitted via a triple-quoted literal whose closing `"""` sat on
+  the line immediately after `────────────────`. Swift strips the
+  newline before the closing `"""`, so the literal ended without a
+  trailing `\n` and the next `text += "1. \(rec)\n"` produced
+  `────────────────1. First rec` on the same line. The fix is an
+  explicit blank line before the closing `"""`, with a comment
+  flagging the load-bearing whitespace.
+
+### Changed
+- `SystemReportGenerator.calculateHealthScore` is now a static so
+  the rule can be exercised without instantiating the generator.
+  The instance method remains for source-compat with the existing
+  `generate(...)` call site and forwards to the static.
+- `SystemReportGenerator.healthStatusLabel(forScore:)` is the new
+  home for the summary line's bucket boundaries (90/70/50/30). The
+  inline `switch` in `generateSummary` was the only place these
+  boundaries lived; pulling them out lets the band edges be pinned
+  directly.
+
+### Added
 - `smolTests/MLAnomalyEngineTests.swift` — 23 tests across three
   structs covering the pure decision logic that runs around the Core
   ML / Create ML inference: `MLAnomalyEngineClassifyTests` (8) pins
