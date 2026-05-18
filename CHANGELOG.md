@@ -7,6 +7,72 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/LocalLLMEngineTests.swift` — 34 tests across five
+  structs: `LocalLLMEngineIntentTests` (13) pins the bilingual
+  keyword classifier, the new array-ordered priority for ambiguous
+  queries (regression — see Fixed), the case-insensitive contract,
+  and structural invariants on the keyword table (every non-chitchat
+  intent has at least one keyword); `LocalLLMEngineHealthScoreTests`
+  (7) pins the conversational variant's 50/80 CPU/memory bands and
+  the *distinct* 75/90 temp bands at every boundary, plus the
+  within-axis no-double-dipping rule; `LocalLLMEngineHealthDescriptorTests`
+  (6) pins each Title-Case band ("Excellent" / "Good" / "Moderate" /
+  "Poor" / "Critical") and that they intentionally differ from
+  SystemReportGenerator's lowercase labels; `LocalLLMEngineHealthEmojiTests`
+  (2) pins the new descriptor↔emoji alignment at every band
+  boundary and adds a 0…100 sweep that fails if any score's emoji
+  contradicts its descriptor's polarity; `LocalLLMEngineBuildPredictResponseTests`
+  (6) covers the prediction-formatter regression (no trailing
+  blank for normal-behaviour responses), the anomaly-with-type
+  append, the anomaly-without-type omit, the nil-prediction
+  training hint, the `Int()` truncation in the confidence
+  percentage, and the `°C`-not-`%` unit on the temperature line.
+  Suite is now 268 tests.
+
+### Fixed
+- **`LocalLLMEngine.detectIntent` is now deterministic across runs.**
+  The keyword table used to live in a `[QueryIntent: [String]]`
+  dictionary, and Swift hash-seed randomization means dict iteration
+  order changes per process. A query matching keywords from two
+  intents (e.g. "tell me the status, the mac is slow" — both
+  `.statusCheck` "status" and `.troubleshoot` "slow") could return
+  different intents in different runs of the same binary, producing
+  inconsistent chat behavior the user couldn't reproduce. The table
+  is now an ordered `[(intent: QueryIntent, keywords: [String])]`
+  tuple array; first match wins, in the priority order defined by
+  the source code.
+- **`LocalLLMEngine.buildPredictResponse` no longer emits a trailing
+  blank line for "normal behaviour" predictions.** The old
+  multi-line literal always interpolated
+  `\(prediction.isAnomaly ? (prediction.anomalyType.map { "Type: \($0)" } ?? "") : "")`
+  on its own line; for non-anomaly predictions (and for anomaly
+  predictions with a nil type) the interpolation collapsed to
+  empty string but the surrounding newlines stayed, producing a
+  visible stray blank at the end of every prediction response.
+  The formatter now builds the response as `[String]` and appends
+  the type line *only* when both `isAnomaly` is true and a type
+  string is present.
+- **`LocalLLMEngine.buildStatusResponse` emoji and descriptor are
+  now in sync.** The pre-fix emoji used `> 80` / `> 50` thresholds
+  while the descriptor used 90/70/50/30 bands — so a score of 75
+  was rendered as "Good" with a ⚠️ emoji (the word said "good",
+  the symbol said "warning"). The emoji is now driven by the
+  descriptor's polarity buckets (Excellent/Good → ✅, Moderate →
+  ⚠️, Poor/Critical → 🔴) via a new `healthEmoji(forScore:)`
+  helper.
+
+### Changed
+- `LocalLLMEngine.calculateHealthScore`, `healthDescriptor`, and
+  `buildPredictResponse` are now `nonisolated static` so they can
+  be tested without standing up the `@MainActor` singleton (which
+  requires an `NLEmbedding` and the user's Application Support
+  directory). The instance is now a thin caller; pure rules live
+  alongside the type.
+- `LocalLLMEngine.intentKeywords` is exposed as a `nonisolated
+  static let` ordered tuple array so the priority is visible in
+  the source and testable independently.
+
+### Added
 - `smolTests/ModelManagerTests.swift` — 12 tests across three
   structs: `ModelManagerRAMTests` (6) pins the `evaluateRAMRequirement`
   boundaries (strict-`<` at minRAM and recommendedRAM, fractional

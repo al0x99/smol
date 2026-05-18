@@ -214,29 +214,44 @@ class LocalLLMEngine: ObservableObject {
         )
     }
 
-    private func detectIntent(_ query: String) -> QueryIntent {
-        // Bilingual keyword table.
-        let intentKeywords: [QueryIntent: [String]] = [
-            .statusCheck:  ["status", "how is", "current", "health",
-                            "stato", "come sta", "situazione", "salute", "quanto", "attuale"],
-            .troubleshoot: ["problem", "issue", "slow", "bug", "crash", "why", "doesn't work", "help",
-                            "problema", "errore", "lento", "perché", "non funziona", "aiuto"],
-            .optimize:     ["optimize", "speed up", "improve", "clean", "performance",
-                            "ottimizza", "migliora", "velocizza", "libera", "pulisci"],
-            .explain:      ["explain", "what is", "what does", "how does",
-                            "spiega", "cos'è", "cosa significa", "come funziona"],
-            .predict:      ["predict", "forecast", "trend", "future",
-                            "prevedi", "previsione", "futuro", "andrà"],
-            .compare:      ["compare", "difference", "better", "worse", "vs",
-                            "confronta", "differenza", "meglio", "peggio"],
-            .action:       ["close", "kill", "open", "launch", "run", "do",
-                            "chiudi", "termina", "avvia", "apri", "esegui", "fai"]
-        ]
+    // Intent keyword table — order encodes priority. Previously this
+    // was a `[QueryIntent: [String]]` and Swift's hash-seed randomization
+    // meant a query matching multiple intents could return different
+    // results across runs of the same process. The ordered tuple array
+    // pins iteration order: first match wins.
+    nonisolated static let intentKeywords: [(intent: QueryIntent, keywords: [String])] = [
+        (.statusCheck,  ["status", "how is", "current", "health",
+                         "stato", "come sta", "situazione", "salute", "quanto", "attuale"]),
+        (.troubleshoot, ["problem", "issue", "slow", "bug", "crash", "why", "doesn't work", "help",
+                         "problema", "errore", "lento", "perché", "non funziona", "aiuto"]),
+        (.optimize,     ["optimize", "speed up", "improve", "clean", "performance",
+                         "ottimizza", "migliora", "velocizza", "libera", "pulisci"]),
+        (.explain,      ["explain", "what is", "what does", "how does",
+                         "spiega", "cos'è", "cosa significa", "come funziona"]),
+        (.predict,      ["predict", "forecast", "trend", "future",
+                         "prevedi", "previsione", "futuro", "andrà"]),
+        (.compare,      ["compare", "difference", "better", "worse", "vs",
+                         "confronta", "differenza", "meglio", "peggio"]),
+        (.action,       ["close", "kill", "open", "launch", "run", "do",
+                         "chiudi", "termina", "avvia", "apri", "esegui", "fai"]),
+    ]
 
+    /// Keyword-based intent detection. Pure helper; the embedding-based
+    /// semantic fallback stays on the instance because it depends on
+    /// the loaded `NLEmbedding`. Returns `nil` when no keyword matches.
+    nonisolated static func keywordIntent(for query: String) -> QueryIntent? {
+        let lowered = query.lowercased()
         for (intent, keywords) in intentKeywords {
-            if keywords.contains(where: { query.contains($0) }) {
+            if keywords.contains(where: { lowered.contains($0) }) {
                 return intent
             }
+        }
+        return nil
+    }
+
+    private func detectIntent(_ query: String) -> QueryIntent {
+        if let intent = Self.keywordIntent(for: query) {
+            return intent
         }
 
         // Semantic similarity via embeddings, if available.
@@ -245,7 +260,7 @@ class LocalLLMEngine: ObservableObject {
             var bestIntent = QueryIntent.chitchat
             var bestScore = 0.0
 
-            for (intent, keywords) in intentKeywords {
+            for (intent, keywords) in Self.intentKeywords {
                 var score = 0.0
                 for word in queryWords {
                     for keyword in keywords {
@@ -281,7 +296,7 @@ class LocalLLMEngine: ObservableObject {
         case .troubleshoot:  return buildTroubleshootResponse(systemContext: systemContext, query: query)
         case .optimize:      return buildOptimizeResponse(systemContext: systemContext)
         case .explain:       return buildExplainResponse(query: query, systemContext: systemContext)
-        case .predict:       return buildPredictResponse(systemContext: systemContext)
+        case .predict:       return Self.buildPredictResponse(prediction: systemContext.prediction)
         case .compare:       return buildCompareResponse(query: query, systemContext: systemContext)
         case .action:        return buildActionResponse(query: query, systemContext: systemContext)
         case .chitchat:      return buildChitchatResponse(query: query, sentiment: analysis.sentiment)
@@ -301,11 +316,11 @@ class LocalLLMEngine: ObservableObject {
 
         var parts: [String] = []
 
-        let healthScore = calculateHealthScore(cpu: cpu, memory: mem, temp: temp)
-        let healthEmoji = healthScore > 80 ? "✅" : (healthScore > 50 ? "⚠️" : "🔴")
+        let healthScore = Self.calculateHealthScore(cpu: cpu, memory: mem, temp: temp)
+        let healthEmoji = Self.healthEmoji(forScore: healthScore)
 
         if !focusCPU && !focusMemory && !focusTemp {
-            parts.append("\(healthEmoji) **Overall: \(healthDescriptor(healthScore))**")
+            parts.append("\(healthEmoji) **Overall: \(Self.healthDescriptor(forScore: healthScore))**")
             parts.append("")
         }
 
@@ -485,8 +500,10 @@ class LocalLLMEngine: ObservableObject {
         """
     }
 
-    private func buildPredictResponse(systemContext: SystemContext) -> String {
-        guard let prediction = systemContext.prediction else {
+    /// Pure formatter — exposed as static so tests can pin the exact
+    /// rendering without spinning up the @MainActor singleton.
+    nonisolated static func buildPredictResponse(prediction: AnomalyPredictionInfo?) -> String {
+        guard let prediction = prediction else {
             return """
             🔮 **Prediction not available**
 
@@ -498,20 +515,30 @@ class LocalLLMEngine: ObservableObject {
             """
         }
 
-        return """
-        🔮 **ML prediction**
+        var lines: [String] = [
+            "🔮 **ML prediction**",
+            "",
+            "Based on the patterns learned from your usage:",
+            "",
+            "• **Predicted CPU**: ~\(Int(prediction.predictedCPU))%",
+            "• **Predicted memory**: ~\(Int(prediction.predictedMemory))%",
+            "• **Predicted temperature**: ~\(Int(prediction.predictedTemp))°C",
+            "",
+            "**Status**: \(prediction.isAnomaly ? "⚠️ anomaly detected" : "✅ normal behaviour")",
+            "**Confidence**: \(Int(prediction.confidence * 100))%",
+        ]
 
-        Based on the patterns learned from your usage:
+        // The old multi-line literal always emitted a trailing
+        // empty-string interpolation when `isAnomaly == false`, which
+        // produced a stray blank line at the end of the response.
+        // Only append the anomaly-type line when we actually have a
+        // type to display.
+        if prediction.isAnomaly, let type = prediction.anomalyType {
+            lines.append("")
+            lines.append("Type: \(type)")
+        }
 
-        • **Predicted CPU**: ~\(Int(prediction.predictedCPU))%
-        • **Predicted memory**: ~\(Int(prediction.predictedMemory))%
-        • **Predicted temperature**: ~\(Int(prediction.predictedTemp))°C
-
-        **Status**: \(prediction.isAnomaly ? "⚠️ anomaly detected" : "✅ normal behaviour")
-        **Confidence**: \(Int(prediction.confidence * 100))%
-
-        \(prediction.isAnomaly ? (prediction.anomalyType.map { "Type: \($0)" } ?? "") : "")
-        """
+        return lines.joined(separator: "\n")
     }
 
     private func buildCompareResponse(query: String, systemContext: SystemContext) -> String {
@@ -586,7 +613,12 @@ class LocalLLMEngine: ObservableObject {
 
     // MARK: - Helpers
 
-    private func calculateHealthScore(cpu: Double, memory: Double, temp: Double) -> Int {
+    /// Coarse health score (0-100) for conversational responses.
+    /// Distinct from `SystemReportGenerator.calculateHealthScore` —
+    /// this version uses two CPU/memory bands (50/80) and two temp
+    /// bands (75/90) and ignores anomalies, since the conversational
+    /// surface speaks in larger buckets than the formal report.
+    nonisolated static func calculateHealthScore(cpu: Double, memory: Double, temp: Double) -> Int {
         var score = 100
 
         if cpu > 80 { score -= 25 }
@@ -601,7 +633,7 @@ class LocalLLMEngine: ObservableObject {
         return max(0, score)
     }
 
-    private func healthDescriptor(_ score: Int) -> String {
+    nonisolated static func healthDescriptor(forScore score: Int) -> String {
         switch score {
         case 90...100: return "Excellent"
         case 70..<90:  return "Good"
@@ -609,6 +641,18 @@ class LocalLLMEngine: ObservableObject {
         case 30..<50:  return "Poor"
         default:       return "Critical"
         }
+    }
+
+    /// Emoji aligned to `healthDescriptor` bands. Previously the emoji
+    /// used `> 80` / `> 50` thresholds while the descriptor used
+    /// 90/70/50/30, so a score of 75 displayed as "Good" with a ⚠️
+    /// emoji — the descriptor said "good" while the emoji said
+    /// "warning". Now Excellent/Good → ✅, Moderate → ⚠️,
+    /// Poor/Critical → 🔴.
+    nonisolated static func healthEmoji(forScore score: Int) -> String {
+        if score >= 70 { return "✅" }
+        if score >= 50 { return "⚠️" }
+        return "🔴"
     }
 
     // MARK: - Context persistence
