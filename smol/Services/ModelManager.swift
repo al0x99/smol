@@ -139,6 +139,20 @@ class ModelManager: ObservableObject {
             throw ModelError.alreadyDownloading
         }
 
+        // MLX entries in the catalog point at a HuggingFace *repo*
+        // (e.g. `huggingface.co/mlx-community/Qwen3-4B-4bit`), not
+        // at a single downloadable file. The previous flow used
+        // `URLSession.downloadTask` against that URL, saved the
+        // resulting HTML as `<id>.gguf` and reported success — the
+        // user later found out at inference time that the "model"
+        // was a webpage. Fail fast with a clear error until a real
+        // MLX multi-file repo downloader exists.
+        if model.format == .mlx {
+            throw ModelError.formatNotSupported(
+                "MLX repo download isn't implemented yet — pick a GGUF model for now."
+            )
+        }
+
         guard let url = URL(string: model.downloadURL) else {
             throw ModelError.invalidURL
         }
@@ -238,14 +252,28 @@ class ModelManager: ObservableObject {
     /// Check if the system has sufficient resources for a model
     func canRunModel(_ model: LLMModel) -> (canRun: Bool, warning: String?) {
         let totalRAM = Foundation.ProcessInfo.processInfo.physicalMemory
-        let totalRAMGB = Double(totalRAM) / 1_073_741_824  // GB
+        let totalRAMGB = Double(totalRAM) / 1_073_741_824  // GiB
+        return Self.evaluateRAMRequirement(totalRAMGB: totalRAMGB, requirements: model.requirements)
+    }
 
-        if totalRAMGB < Double(model.requirements.minRAM) {
-            return (false, "Insufficient RAM. Requires at least \(model.requirements.minRAM) GB, available \(Int(totalRAMGB)) GB")
+    /// Pure rule extracted from `canRunModel`. The previous version
+    /// formatted the available RAM with `Int(totalRAMGB)`, which
+    /// rounded a 14.9 GiB machine down to "14 GB" in the warning
+    /// string — confusing for users with marketed-"16 GB" Macs that
+    /// report ~14.9 GiB after the OS reservation. We keep one
+    /// decimal place so the value the user reads matches what the
+    /// comparison saw.
+    nonisolated static func evaluateRAMRequirement(
+        totalRAMGB: Double,
+        requirements: ModelRequirements
+    ) -> (canRun: Bool, warning: String?) {
+        if totalRAMGB < Double(requirements.minRAM) {
+            let available = String(format: "%.1f", totalRAMGB)
+            return (false, "Insufficient RAM. Requires at least \(requirements.minRAM) GB, available \(available) GB")
         }
 
-        if totalRAMGB < Double(model.requirements.recommendedRAM) {
-            return (true, "RAM below recommended (\(model.requirements.recommendedRAM) GB). May be slow.")
+        if totalRAMGB < Double(requirements.recommendedRAM) {
+            return (true, "RAM below recommended (\(requirements.recommendedRAM) GB). May be slow.")
         }
 
         return (true, nil)
@@ -486,12 +514,13 @@ enum ModelCapability: String, CaseIterable {
 }
 
 /// Errors surfaced by `ModelManager` during download / installation.
-enum ModelError: LocalizedError {
+enum ModelError: LocalizedError, Equatable {
     case alreadyDownloading
     case invalidURL
     case downloadFailed(String)
     case modelNotFound
     case insufficientResources
+    case formatNotSupported(String)
 
     var errorDescription: String? {
         switch self {
@@ -505,6 +534,8 @@ enum ModelError: LocalizedError {
             return "Model not found"
         case .insufficientResources:
             return "Insufficient resources to run the model"
+        case .formatNotSupported(let reason):
+            return reason
         }
     }
 }

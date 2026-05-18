@@ -7,6 +7,49 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/ModelManagerTests.swift` — 12 tests across three
+  structs: `ModelManagerRAMTests` (6) pins the `evaluateRAMRequirement`
+  boundaries (strict-`<` at minRAM and recommendedRAM, fractional
+  preservation in the "available N GB" string, and the motivating
+  marketed-"16 GB" Mac → 14.9 GiB → runnable-with-warning case);
+  `LLMModelFormattedSizeTests` (5) pins the MB/GB threshold at
+  exactly 1 GiB including the `>= 1` strict boundary that puts
+  1,073,741,823 bytes in the MB branch and 1,073,741,824 bytes in
+  the GB branch, plus the 0-byte edge case; `ModelManagerMLXDownloadTests`
+  (1) covers the new MLX-download gate end-to-end and asserts the
+  singleton's `isDownloading` state is untouched by the early
+  throw. Suite is now 234 tests.
+
+### Fixed
+- **`ModelManager.downloadModel` no longer pretends to download MLX
+  models.** Catalog entries with `format: .mlx` (Qwen3 4B MLX, Phi
+  3.5 Mini MLX, Gemma 2 2B MLX) point at HuggingFace *repo* URLs
+  like `huggingface.co/mlx-community/Qwen3-4B-4bit`, not at single
+  downloadable files. The pre-fix flow ran `URLSession.downloadTask`
+  against the repo URL, saved the resulting HTML as `<id>.gguf`,
+  and reported success — the user only discovered the lie at
+  inference time when the "model" failed to load. The download
+  call now throws `ModelError.formatNotSupported` early (before any
+  state mutation) with a clear message; the catalog entries stay
+  visible in the picker since the UI surfaces a purple MLX badge.
+- **`ModelManager.canRunModel` no longer truncates fractional RAM in
+  the error message.** The pre-fix string was `"… available
+  \(Int(totalRAMGB)) GB"`, which on a marketed-"16 GB" Mac (which
+  reports ~14.9 GiB physical) showed "available 14 GB". The
+  comparison uses the full double, so the user could be denied a
+  model that requires "16 GB" minimum while their machine was
+  rounded down by 0.9 GB in the error. The message now uses
+  `%.1f` so the displayed value matches what the rule saw.
+
+### Changed
+- `ModelManager.canRunModel` delegates to a new `nonisolated static
+  evaluateRAMRequirement(totalRAMGB:requirements:)` so the
+  boundary rule can be tested without standing up the
+  `@MainActor` singleton or `ProcessInfo`.
+- `ModelError` is now `Equatable` and gains a `.formatNotSupported`
+  case used by the MLX gate above.
+
+### Added
 - `smolTests/SystemReportGeneratorTests.swift` — 19 tests across
   three structs: `SystemReportHealthScoreTests` (10) pins each CPU /
   memory / temp deduction band at the exact boundary (40/60/80 for
