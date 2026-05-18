@@ -110,19 +110,25 @@ class SmartAdvisor: ObservableObject {
             let expectedRange: ClosedRange<Double>
             let metric: String
 
-            // Determine main metric of the anomaly
+            // Determine main metric of the anomaly. Each branch builds
+            // an "expected range" anchored at a sensible floor and
+            // extended by a fixed margin above the model's prediction.
+            // We defensively keep `upper >= lower` because an
+            // under-trained model can briefly emit negative or
+            // implausibly low predictions, and a `lower > upper`
+            // `ClosedRange.init` would trap.
             switch prediction.anomalyType {
             case .cpuSpike:
                 currentVal = cpuUsage
-                expectedRange = 0...prediction.predictedCPU + 25
+                expectedRange = 0 ... max(0, prediction.predictedCPU + 25)
                 metric = "CPU"
             case .memoryLeak:
                 currentVal = memoryPressure
-                expectedRange = 0...prediction.predictedMemory + 20
+                expectedRange = 0 ... max(0, prediction.predictedMemory + 20)
                 metric = "Memory"
             case .thermalThrottling:
                 currentVal = temperature
-                expectedRange = 30...prediction.predictedTemp + 15
+                expectedRange = 30 ... max(30, prediction.predictedTemp + 15)
                 metric = "Temperature"
             default:
                 currentVal = cpuUsage
@@ -519,15 +525,28 @@ class SmartAdvisor: ObservableObject {
         }
     }
 
-    /// Calculate trend (percentage change) in a time window
+    /// Trend over a recent time window, in *raw value units* (not a
+    /// percentage). For pressure series the unit is percentage points;
+    /// for temperature it's °C. The advice thresholds above compare
+    /// against this delta directly. Returns `nil` when there is no
+    /// pair of samples to compare (history shorter than 2, or fewer
+    /// than 2 samples fall inside the window).
     private func calculateTrend(_ history: [AIDataPoint], windowMinutes: Int) -> Double? {
+        Self.trend(in: history, windowMinutes: windowMinutes, now: Date())
+    }
+
+    /// Pure variant of `calculateTrend`, with an explicit `now` so the
+    /// windowing logic can be tested deterministically without
+    /// touching the wall clock. `nonisolated` because it touches no
+    /// actor-protected state — needed so tests (and any background
+    /// caller) can invoke it without hopping to the main actor.
+    nonisolated static func trend(in history: [AIDataPoint], windowMinutes: Int, now: Date) -> Double? {
         guard history.count >= 2 else { return nil }
-
-        let windowStart = Date().addingTimeInterval(-Double(windowMinutes * 60))
+        let windowStart = now.addingTimeInterval(-Double(windowMinutes * 60))
         let windowData = history.filter { $0.timestamp >= windowStart }
-
-        guard let first = windowData.first, let last = windowData.last else { return nil }
-
+        guard windowData.count >= 2,
+              let first = windowData.first,
+              let last = windowData.last else { return nil }
         return last.value - first.value
     }
 }

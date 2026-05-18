@@ -7,6 +7,40 @@ the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 ## [Unreleased]
 
 ### Added
+- `smolTests/SmartAdvisorTrendTests.swift` — 8 tests pinning the
+  `SmartAdvisor.trend(in:windowMinutes:now:)` windowing logic
+  (empty/single-sample → nil; descending series returns a negative
+  delta so the live `trend > 10` filter behaves correctly; samples at
+  the exact `windowMinutes` boundary are included; flat-in-window
+  series returns 0 distinctly from nil; all-out-of-window returns
+  nil). The static is `nonisolated`, so the tests don't need to hop
+  to `@MainActor`. Suite is now 120 tests.
+
+### Fixed
+- **`SmartAdvisor.analyze` no longer risks trapping on a malformed
+  `ClosedRange` in the ML-anomaly branch.** Three sites built
+  `expectedRange` as `0 ... prediction.predictedX + margin` (or
+  `30 ... ...` for temperature). An under-trained model can briefly
+  emit negative or implausibly low predictions, in which case
+  `predictedX + margin` falls below the lower bound and
+  `ClosedRange.init` would trap. The upper bound is now clamped to be
+  at least the lower bound.
+
+### Changed
+- `SmartAdvisor.calculateTrend` was renamed in spirit only: the
+  doc-comment used to claim "percentage change" but the body always
+  returned `last.value - first.value` — a *delta in raw value units*.
+  The comment is now accurate, the function is split into a
+  `@MainActor` thin instance method and a pure `nonisolated static
+  trend(in:windowMinutes:now:)` that takes `now` explicitly so the
+  windowing logic is testable.
+- The static `trend(...)` tightens the "needs ≥ 2 samples *inside the
+  window*" guard. The prior code returned `last - first = 0` for a
+  one-sample window, which all live callers (filtered by
+  `trend > N` for N > 0) then ignored — same end result, but
+  returning `nil` is the more honest "no signal" semantic.
+
+### Added
 - `smolTests/AnomalyDetectorTests.swift` — 16 tests covering the two
   pure transforms behind the Anomalies tab: the slope+R² fit used by
   the "memory pressure keeps climbing" leak heuristic, and the
